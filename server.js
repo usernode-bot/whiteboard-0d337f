@@ -9,6 +9,15 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
+const sseClients = new Set();
+
+function broadcast(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    res.write(msg);
+  }
+}
+
 const PUBLIC_API_PATHS = new Set(['/health']);
 
 app.use(express.json({ limit: '10mb' }));
@@ -38,6 +47,17 @@ app.get('/api/strokes', async (req, res) => {
   }
 });
 
+app.get('/api/strokes/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+  res.write('\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
 app.post('/api/strokes', async (req, res) => {
   try {
     const { stroke_data } = req.body;
@@ -45,7 +65,9 @@ app.post('/api/strokes', async (req, res) => {
       'INSERT INTO strokes (user_id, username, stroke_data) VALUES ($1, $2, $3) RETURNING id, created_at',
       [req.user.id, req.user.username, JSON.stringify(stroke_data)]
     );
-    res.json({ ok: true, id: rows[0].id, created_at: rows[0].created_at });
+    const result = { ok: true, id: rows[0].id, created_at: rows[0].created_at };
+    res.json(result);
+    broadcast('stroke', { id: rows[0].id, user_id: req.user.id, username: req.user.username, stroke_data, created_at: rows[0].created_at });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -55,6 +77,7 @@ app.delete('/api/strokes/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
     res.json({ ok: true });
+    broadcast('undo', { id: parseInt(req.params.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -64,6 +87,7 @@ app.delete('/api/strokes', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes');
     res.json({ ok: true });
+    broadcast('clear', {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
