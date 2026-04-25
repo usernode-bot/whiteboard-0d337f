@@ -72,14 +72,15 @@
     canvas { display: block; cursor: crosshair; }
     .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
     .tool-btn { transition: all 0.15s; }
+    .tool-btn { color: #3f3f46; }
     .tool-btn.active { background: #7c3aed; color: white; }
-    .tool-btn:not(.active):hover { background: rgba(124, 58, 237, 0.2); }
+    .tool-btn:not(.active):hover { background: rgba(124, 58, 237, 0.15); }
     input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: #3f3f46; outline: none; }
     input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; }
     input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; border: none; }
     input[type="color"] { -webkit-appearance: none; border: none; padding: 0; cursor: pointer; }
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
-    input[type="color"]::-webkit-color-swatch { border: 2px solid #52525b; border-radius: 6px; }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid #d4d4d8; border-radius: 6px; }
     #save-indicator { transition: opacity 0.3s; }
     @media (max-width: 640px) {
       .toolbar { padding: 6px 8px !important; gap: 4px !important; }
@@ -89,10 +90,10 @@
     }
   </style>
 </head>
-<body class="bg-zinc-950">
+<body class="bg-white">
   <canvas id="canvas"></canvas>
 
-  <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-zinc-900/90 border border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-xl max-w-[96vw] overflow-x-auto">
+  <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 border border-zinc-300 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
     </button>
@@ -100,9 +101,9 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
     </button>
 
-    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
+    <div class="w-px h-8 bg-zinc-300 mx-1"></div>
 
-    <input id="color-picker" type="color" value="#e4e4e7" class="w-9 h-9 rounded-lg bg-transparent" title="Color">
+    <input id="color-picker" type="color" value="#1c1917" class="w-9 h-9 rounded-lg bg-transparent" title="Color">
 
     <div class="flex items-center gap-1">
       <span class="desktop-label text-xs text-zinc-500">Size</span>
@@ -110,7 +111,7 @@
       <span id="size-label" class="text-xs text-zinc-400 w-6 text-center">3</span>
     </div>
 
-    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
+    <div class="w-px h-8 bg-zinc-300 mx-1"></div>
 
     <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
@@ -119,7 +120,7 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
     </button>
 
-    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
+    <div class="w-px h-8 bg-zinc-300 mx-1"></div>
 
     <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -129,7 +130,7 @@
     </button>
   </div>
 
-  <div id="save-indicator" class="fixed bottom-4 right-4 bg-zinc-800/80 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-400 z-50 opacity-0 pointer-events-none">
+  <div id="save-indicator" class="fixed bottom-4 right-4 bg-white/90 border border-zinc-300 rounded-lg px-3 py-1.5 text-xs text-zinc-500 z-50 opacity-0 pointer-events-none shadow">
     Saved
   </div>
 
@@ -145,7 +146,7 @@
     let redoStack = [];
     let currentStroke = null;
     let tool = 'pen';
-    let strokeColor = '#e4e4e7';
+    let strokeColor = '#1c1917';
     let strokeWidth = 3;
     let isDrawing = false;
     let dirty = false;
@@ -173,7 +174,7 @@
       for (let i = 1; i < s.points.length; i++) {
         ctx.lineTo(s.points[i].x, s.points[i].y);
       }
-      ctx.strokeStyle = s.eraser ? '#09090b' : s.color;
+      ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
       ctx.lineWidth = s.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -218,7 +219,7 @@
         ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
         ctx.lineTo(pos.x, pos.y);
       }
-      ctx.strokeStyle = currentStroke.eraser ? '#09090b' : currentStroke.color;
+      ctx.strokeStyle = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       ctx.lineWidth = currentStroke.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
