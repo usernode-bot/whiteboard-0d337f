@@ -137,6 +137,16 @@
     Saved
   </div>
 
+  <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+    <div class="bg-white rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
+      <p id="confirm-msg" class="text-zinc-800 text-sm mb-4"></p>
+      <div class="flex gap-3 justify-center">
+        <button id="confirm-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 text-zinc-600 text-sm hover:bg-zinc-100">Cancel</button>
+        <button id="confirm-ok" class="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600">Clear</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -381,9 +391,30 @@
       redrawAll();
     });
 
+    function showConfirm(msg) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal');
+        document.getElementById('confirm-msg').textContent = msg;
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        function cleanup(result) {
+          modal.style.display = 'none';
+          modal.classList.add('hidden');
+          document.getElementById('confirm-ok').removeEventListener('click', onOk);
+          document.getElementById('confirm-cancel').removeEventListener('click', onCancel);
+          resolve(result);
+        }
+        function onOk() { cleanup(true); }
+        function onCancel() { cleanup(false); }
+        document.getElementById('confirm-ok').addEventListener('click', onOk);
+        document.getElementById('confirm-cancel').addEventListener('click', onCancel);
+      });
+    }
+
     document.getElementById('btn-clear').addEventListener('click', async () => {
       if (strokes.length === 0) return;
-      if (!confirm('Clear the entire shared whiteboard?')) return;
+      const confirmed = await showConfirm('Clear the entire shared whiteboard?');
+      if (!confirmed) return;
       try {
         await fetch('/api/strokes', {
           method: 'DELETE',
