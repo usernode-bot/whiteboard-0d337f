@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <script>
+  // usernode-dev-console@1
+  (function () {
+    if (window.__usernodeDevConsole) return;
+    window.__usernodeDevConsole = true;
+    var S = '__usernodeDevConsole';
+    function serialize(v, depth) {
+      depth = depth || 0;
+      try {
+        if (v === undefined) return 'undefined';
+        if (v === null) return 'null';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (typeof v === 'function') return '[Function ' + (v.name || 'anonymous') + ']';
+        if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
+        if (depth > 3) return '[…]';
+        var seen = new WeakSet();
+        return JSON.stringify(v, function (k, val) {
+          if (typeof val === 'object' && val !== null) {
+            if (seen.has(val)) return '[Circular]';
+            seen.add(val);
+          }
+          if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
+          if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+          return val;
+        });
+      } catch (e) { try { return String(v); } catch (_) { return '[unserializable]'; } }
+    }
+    function post(level, args, meta) {
+      try {
+        var payload = {
+          sentinel: S,
+          level: level,
+          args: Array.prototype.slice.call(args).map(function (a) { return serialize(a); }),
+          ts: Date.now(),
+          url: location.href,
+        };
+        if (meta) for (var k in meta) payload[k] = meta[k];
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(payload, '*');
+        }
+      } catch (_) {}
+    }
+    ['log','info','warn','error','debug'].forEach(function (level) {
+      var orig = console[level] ? console[level].bind(console) : function () {};
+      console[level] = function () { post(level, arguments); orig.apply(null, arguments); };
+    });
+    window.addEventListener('error', function (e) {
+      var msg = (e.error && (e.error.stack || e.error.message)) || e.message || 'Error';
+      post('error', [msg], { source: e.filename || '', line: e.lineno || 0, col: e.colno || 0, kind: 'error' });
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      var msg = (r && (r.stack || r.message)) || String(r);
+      post('error', [msg], { kind: 'unhandledrejection' });
+    });
+    try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
+  })();
+  </script>
+  <title>whiteboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col items-center justify-center gap-8 p-4">
+  <h1 class="text-2xl font-bold">whiteboard</h1>
+
+  <button id="press-btn" class="w-32 h-32 rounded-full bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold shadow-lg shadow-violet-600/30">
+    Press!
+  </button>
+
+  <div id="count" class="text-lg text-zinc-400">0 total presses</div>
+
+  <div class="w-full max-w-sm">
+    <h2 class="text-sm font-medium text-zinc-500 mb-2 text-center">Leaderboard</h2>
+    <div id="leaderboard" class="space-y-1"></div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || '';
+    const headers = token ? { 'x-usernode-token': token } : {};
+
+    async function loadLeaderboard() {
+      const res = await fetch('/api/leaderboard', { headers });
+      if (!res.ok) return;
+      const { leaderboard } = await res.json();
+      const el = document.getElementById('leaderboard');
+      if (!leaderboard.length) {
+        el.innerHTML = '<p class="text-center text-zinc-600 text-sm">No presses yet</p>';
+        return;
+      }
+      el.innerHTML = leaderboard.map((r, i) =>
+        '<div class="flex justify-between px-3 py-1 rounded ' + (i === 0 ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-400') + '">' +
+        '<span>' + (i + 1) + '. ' + r.username + '</span>' +
+        '<span class="font-mono">' + r.presses + '</span></div>'
+      ).join('');
+      const total = leaderboard.reduce((s, r) => s + parseInt(r.presses), 0);
+      document.getElementById('count').textContent = total + ' total presses';
+    }
+
+    document.getElementById('press-btn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/press', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+        });
+        if (res.ok) loadLeaderboard();
+        else if (res.status === 401) document.getElementById('count').textContent = 'Sign in to press!';
+      } catch {}
+    });
+
+    loadLeaderboard();
+  </script>
+</body>
+</html>
