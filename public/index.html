@@ -2,8 +2,8 @@
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -63,22 +63,74 @@
     try { post('info', ['[dev-console ready]'], { kind: 'ready' }); } catch (_) {}
   })();
   </script>
-  <title>whiteboard</title>
+  <title>Whiteboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
+    canvas { display: block; cursor: crosshair; }
+    .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .tool-btn { transition: all 0.15s; }
+    .tool-btn.active { background: #7c3aed; color: white; }
+    .tool-btn:not(.active):hover { background: rgba(124, 58, 237, 0.2); }
+    input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: #3f3f46; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; }
+    input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; border: none; }
+    input[type="color"] { -webkit-appearance: none; border: none; padding: 0; cursor: pointer; }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+    input[type="color"]::-webkit-color-swatch { border: 2px solid #52525b; border-radius: 6px; }
+    #save-indicator { transition: opacity 0.3s; }
+    @media (max-width: 640px) {
+      .toolbar { padding: 6px 8px !important; gap: 4px !important; }
+      .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
+      .desktop-label { display: none; }
+      input[type="range"] { width: 60px !important; }
+    }
+  </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col items-center justify-center gap-8 p-4">
-  <h1 class="text-2xl font-bold">whiteboard</h1>
+<body class="bg-zinc-950">
+  <canvas id="canvas"></canvas>
 
-  <button id="press-btn" class="w-32 h-32 rounded-full bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold shadow-lg shadow-violet-600/30">
-    Press!
-  </button>
+  <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-zinc-900/90 border border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-xl max-w-[96vw] overflow-x-auto">
+    <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+    </button>
+    <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+    </button>
 
-  <div id="count" class="text-lg text-zinc-400">0 total presses</div>
+    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
 
-  <div class="w-full max-w-sm">
-    <h2 class="text-sm font-medium text-zinc-500 mb-2 text-center">Leaderboard</h2>
-    <div id="leaderboard" class="space-y-1"></div>
+    <input id="color-picker" type="color" value="#e4e4e7" class="w-9 h-9 rounded-lg bg-transparent" title="Color">
+
+    <div class="flex items-center gap-1">
+      <span class="desktop-label text-xs text-zinc-500">Size</span>
+      <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
+      <span id="size-label" class="text-xs text-zinc-400 w-6 text-center">3</span>
+    </div>
+
+    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
+
+    <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <button id="btn-redo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Redo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+
+    <div class="w-px h-8 bg-zinc-600 mx-1"></div>
+
+    <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+    </button>
+    <button id="btn-save" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Save">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    </button>
+  </div>
+
+  <div id="save-indicator" class="fixed bottom-4 right-4 bg-zinc-800/80 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-400 z-50 opacity-0 pointer-events-none">
+    Saved
   </div>
 
   <script>
@@ -86,36 +138,246 @@
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
-    async function loadLeaderboard() {
-      const res = await fetch('/api/leaderboard', { headers });
-      if (!res.ok) return;
-      const { leaderboard } = await res.json();
-      const el = document.getElementById('leaderboard');
-      if (!leaderboard.length) {
-        el.innerHTML = '<p class="text-center text-zinc-600 text-sm">No presses yet</p>';
-        return;
-      }
-      el.innerHTML = leaderboard.map((r, i) =>
-        '<div class="flex justify-between px-3 py-1 rounded ' + (i === 0 ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-400') + '">' +
-        '<span>' + (i + 1) + '. ' + r.username + '</span>' +
-        '<span class="font-mono">' + r.presses + '</span></div>'
-      ).join('');
-      const total = leaderboard.reduce((s, r) => s + parseInt(r.presses), 0);
-      document.getElementById('count').textContent = total + ' total presses';
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let strokes = [];
+    let redoStack = [];
+    let currentStroke = null;
+    let tool = 'pen';
+    let strokeColor = '#e4e4e7';
+    let strokeWidth = 3;
+    let isDrawing = false;
+    let dirty = false;
+    let autoSaveTimer = null;
+
+    function resize() {
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      ctx.putImageData(data, 0, 0);
+      redrawAll();
     }
 
-    document.getElementById('press-btn').addEventListener('click', async () => {
-      try {
-        const res = await fetch('/api/press', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headers },
-        });
-        if (res.ok) loadLeaderboard();
-        else if (res.status === 401) document.getElementById('count').textContent = 'Sign in to press!';
-      } catch {}
+    function redrawAll() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const s of strokes) {
+        drawStroke(s);
+      }
+    }
+
+    function drawStroke(s) {
+      if (s.points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(s.points[0].x, s.points[0].y);
+      for (let i = 1; i < s.points.length; i++) {
+        ctx.lineTo(s.points[i].x, s.points[i].y);
+      }
+      ctx.strokeStyle = s.eraser ? '#09090b' : s.color;
+      ctx.lineWidth = s.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (s.eraser) {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function getPos(e) {
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDraw(e) {
+      if (e.target.closest('.toolbar')) return;
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getPos(e);
+      currentStroke = {
+        points: [pos],
+        color: strokeColor,
+        width: tool === 'eraser' ? strokeWidth * 3 : strokeWidth,
+        eraser: tool === 'eraser'
+      };
+    }
+
+    function moveDraw(e) {
+      if (!isDrawing || !currentStroke) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      currentStroke.points.push(pos);
+
+      ctx.beginPath();
+      const pts = currentStroke.points;
+      if (pts.length >= 2) {
+        ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
+        ctx.lineTo(pos.x, pos.y);
+      }
+      ctx.strokeStyle = currentStroke.eraser ? '#09090b' : currentStroke.color;
+      ctx.lineWidth = currentStroke.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (currentStroke.eraser) {
+        ctx.globalCompositeOperation = 'destination-out';
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function endDraw(e) {
+      if (!isDrawing || !currentStroke) return;
+      e.preventDefault();
+      if (currentStroke.points.length >= 2) {
+        strokes.push(currentStroke);
+        redoStack = [];
+        dirty = true;
+        scheduleAutoSave();
+      }
+      currentStroke = null;
+      isDrawing = false;
+    }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', moveDraw);
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('mouseleave', endDraw);
+
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', moveDraw, { passive: false });
+    canvas.addEventListener('touchend', endDraw, { passive: false });
+    canvas.addEventListener('touchcancel', endDraw, { passive: false });
+
+    document.getElementById('btn-pen').addEventListener('click', () => {
+      tool = 'pen';
+      document.getElementById('btn-pen').classList.add('active');
+      document.getElementById('btn-eraser').classList.remove('active');
+      canvas.style.cursor = 'crosshair';
     });
 
-    loadLeaderboard();
+    document.getElementById('btn-eraser').addEventListener('click', () => {
+      tool = 'eraser';
+      document.getElementById('btn-eraser').classList.add('active');
+      document.getElementById('btn-pen').classList.remove('active');
+      canvas.style.cursor = 'cell';
+    });
+
+    document.getElementById('color-picker').addEventListener('input', (e) => {
+      strokeColor = e.target.value;
+      tool = 'pen';
+      document.getElementById('btn-pen').classList.add('active');
+      document.getElementById('btn-eraser').classList.remove('active');
+      canvas.style.cursor = 'crosshair';
+    });
+
+    const sizeSlider = document.getElementById('stroke-size');
+    const sizeLabel = document.getElementById('size-label');
+    sizeSlider.addEventListener('input', (e) => {
+      strokeWidth = parseInt(e.target.value);
+      sizeLabel.textContent = strokeWidth;
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', () => {
+      if (strokes.length === 0) return;
+      redoStack.push(strokes.pop());
+      redrawAll();
+      dirty = true;
+      scheduleAutoSave();
+    });
+
+    document.getElementById('btn-redo').addEventListener('click', () => {
+      if (redoStack.length === 0) return;
+      strokes.push(redoStack.pop());
+      redrawAll();
+      dirty = true;
+      scheduleAutoSave();
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      if (strokes.length === 0) return;
+      if (!confirm('Clear the entire whiteboard?')) return;
+      strokes = [];
+      redoStack = [];
+      redrawAll();
+      dirty = true;
+      scheduleAutoSave();
+    });
+
+    document.getElementById('btn-save').addEventListener('click', () => saveDrawing());
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          document.getElementById('btn-redo').click();
+        } else {
+          document.getElementById('btn-undo').click();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveDrawing();
+      }
+    });
+
+    function showSaveIndicator(text) {
+      const el = document.getElementById('save-indicator');
+      el.textContent = text || 'Saved';
+      el.style.opacity = '1';
+      setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    }
+
+    function scheduleAutoSave() {
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => {
+        if (dirty) saveDrawing(true);
+      }, 5000);
+    }
+
+    async function saveDrawing(auto) {
+      if (strokes.length === 0 && !auto) {
+        showSaveIndicator('Nothing to save');
+        return;
+      }
+      try {
+        const res = await fetch('/api/drawing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ drawing_data: { strokes }, title: 'Untitled' })
+        });
+        if (res.ok) {
+          dirty = false;
+          showSaveIndicator(auto ? 'Auto-saved' : 'Saved');
+        }
+      } catch (err) {
+        console.error('Save failed:', err);
+        showSaveIndicator('Save failed');
+      }
+    }
+
+    async function loadDrawing() {
+      try {
+        const res = await fetch('/api/drawing', { headers });
+        if (!res.ok) return;
+        const { drawing } = await res.json();
+        if (drawing && drawing.drawing_data && drawing.drawing_data.strokes) {
+          strokes = drawing.drawing_data.strokes;
+          redrawAll();
+        }
+      } catch (err) {
+        console.error('Load failed:', err);
+      }
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+    loadDrawing();
   </script>
 </body>
 </html>

@@ -7,27 +7,17 @@ const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
+const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-// Paths that stay open without authentication. Add a path here (and add it
-// with `app.get`/`app.post` below) if you deliberately want it public.
-// Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// Verify platform-issued JWT if one was passed, then enforce auth on
-// anything not explicitly marked public. The iframe adds `?token=…`
-// on load; the frontend script forwards the token via `x-usernode-token`
-// on subsequent fetches.
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
   if (token && JWT_SECRET) {
     try { req.user = jwt.verify(token, JWT_SECRET); } catch {}
   }
-
-  // Static assets (CSS/JS/images) are always served; the API and the HTML
-  // shell are gated so direct hits to the staging/prod subdomain don't
-  // leak app data to the public internet.
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
@@ -37,29 +27,41 @@ app.use((req, res, next) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// Button press
-app.post('/api/press', async (req, res) => {
+app.get('/api/drawing', async (req, res) => {
   try {
-    await pool.query(`
-      INSERT INTO presses (user_id, username) VALUES ($1, $2)
-    `, [req.user.id, req.user.username]);
-    res.json({ ok: true });
+    const { rows } = await pool.query(
+      `SELECT id, drawing_data, title, updated_at FROM drawings
+       WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    res.json({ drawing: rows[0] || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Leaderboard
-app.get('/api/leaderboard', async (_req, res) => {
+app.post('/api/drawing', async (req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT username, COUNT(*) as presses
-      FROM presses
-      GROUP BY username
-      ORDER BY presses DESC
-      LIMIT 50
-    `);
-    res.json({ leaderboard: rows });
+    const { drawing_data, title } = req.body;
+    const { rows } = await pool.query(
+      `SELECT id FROM drawings WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (rows.length > 0) {
+      await pool.query(
+        `UPDATE drawings SET drawing_data = $1, title = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [JSON.stringify(drawing_data), title || 'Untitled', rows[0].id]
+      );
+      res.json({ ok: true, id: rows[0].id });
+    } else {
+      const ins = await pool.query(
+        `INSERT INTO drawings (user_id, username, drawing_data, title)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [req.user.id, req.user.username, JSON.stringify(drawing_data), title || 'Untitled']
+      );
+      res.json({ ok: true, id: ins.rows[0].id });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -67,8 +69,6 @@ app.get('/api/leaderboard', async (_req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// HTML shell: serve the app if authenticated, otherwise an "open in Usernode"
-// landing page so stray visits to the staging URL don't reveal the app.
 app.get('*', (req, res) => {
   if (!req.user) {
     return res.status(401).send(`<!doctype html><meta charset=utf-8><title>Open in Usernode</title>
@@ -85,11 +85,14 @@ app.get('*', (req, res) => {
 
 async function start() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS presses (
+    CREATE TABLE IF NOT EXISTS drawings (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      username VARCHAR(255) NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      drawing_data JSONB,
+      title TEXT DEFAULT 'Untitled',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
   app.listen(port, () => console.log(`Listening on :${port}`));
