@@ -131,9 +131,6 @@
     <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
     </button>
-    <button id="btn-refresh" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Refresh board">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-    </button>
   </div>
 
   <div id="status-indicator" class="fixed bottom-4 right-4 bg-white/90 border border-zinc-300 rounded-lg px-3 py-1.5 text-xs text-zinc-500 z-50 opacity-0 pointer-events-none shadow transition-opacity duration-300">
@@ -400,8 +397,6 @@
       redrawAll();
     });
 
-    document.getElementById('btn-refresh').addEventListener('click', () => loadStrokes());
-
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
@@ -451,9 +446,45 @@
       }
     }
 
+    function connectSSE() {
+      const url = '/api/strokes/stream' + (token ? '?token=' + encodeURIComponent(token) : '');
+      const es = new EventSource(url);
+
+      es.addEventListener('stroke', (e) => {
+        const data = JSON.parse(e.data);
+        const exists = strokes.some(s => s.id === data.id);
+        if (!exists) {
+          const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
+          strokes.push({ id: data.id, stroke_data: strokeData });
+          drawStroke(strokeData);
+        }
+      });
+
+      es.addEventListener('undo', (e) => {
+        const data = JSON.parse(e.data);
+        const idx = strokes.findIndex(s => s.id === data.id);
+        if (idx !== -1) {
+          strokes.splice(idx, 1);
+          redrawAll();
+        }
+      });
+
+      es.addEventListener('clear', () => {
+        strokes = [];
+        redoStack = [];
+        redrawAll();
+      });
+
+      es.onerror = () => {
+        es.close();
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
     window.addEventListener('resize', resize);
     resize();
     loadStrokes();
+    connectSSE();
   </script>
 </body>
 </html>
