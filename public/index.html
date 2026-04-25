@@ -81,7 +81,7 @@
     input[type="color"] { -webkit-appearance: none; border: none; padding: 0; cursor: pointer; }
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
     input[type="color"]::-webkit-color-swatch { border: 2px solid #d4d4d8; border-radius: 6px; }
-    #eraser-cursor {
+    #brush-cursor {
       position: fixed; pointer-events: none; z-index: 40;
       border: 2px solid #a1a1aa; border-radius: 50%;
       display: none; transform: translate(-50%, -50%);
@@ -97,7 +97,7 @@
 </head>
 <body class="bg-white">
   <canvas id="canvas"></canvas>
-  <div id="eraser-cursor"></div>
+  <div id="brush-cursor"></div>
 
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 border border-zinc-300 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
@@ -157,21 +157,27 @@
     let isDrawing = false;
     let dirty = false;
     let autoSaveTimer = null;
-    const eraserCursor = document.getElementById('eraser-cursor');
+    const brushCursor = document.getElementById('brush-cursor');
 
-    function updateEraserCursorSize() {
-      const size = strokeWidth * 3;
-      eraserCursor.style.width = size + 'px';
-      eraserCursor.style.height = size + 'px';
+    function updateBrushCursor() {
+      const size = tool === 'eraser' ? strokeWidth * 3 : strokeWidth;
+      const displaySize = Math.max(size, 4);
+      brushCursor.style.width = displaySize + 'px';
+      brushCursor.style.height = displaySize + 'px';
+      if (tool === 'eraser') {
+        brushCursor.style.borderColor = '#a1a1aa';
+      } else {
+        brushCursor.style.borderColor = strokeColor;
+      }
     }
 
-    function moveEraserCursor(x, y) {
-      eraserCursor.style.left = x + 'px';
-      eraserCursor.style.top = y + 'px';
+    function moveBrushCursor(x, y) {
+      brushCursor.style.left = x + 'px';
+      brushCursor.style.top = y + 'px';
     }
 
-    function showEraserCursor(show) {
-      eraserCursor.style.display = show ? 'block' : 'none';
+    function showBrushCursor(show) {
+      brushCursor.style.display = show ? 'block' : 'none';
       canvas.style.cursor = show ? 'none' : 'crosshair';
     }
 
@@ -270,42 +276,40 @@
 
     canvas.addEventListener('mousedown', startDraw);
     canvas.addEventListener('mousemove', (e) => {
-      if (tool === 'eraser') {
-        moveEraserCursor(e.clientX, e.clientY);
-      }
+      moveBrushCursor(e.clientX, e.clientY);
       moveDraw(e);
     });
     canvas.addEventListener('mouseup', endDraw);
     canvas.addEventListener('mouseleave', (e) => {
-      eraserCursor.style.display = 'none';
+      brushCursor.style.display = 'none';
       endDraw(e);
     });
     canvas.addEventListener('mouseenter', (e) => {
-      if (tool === 'eraser') {
-        showEraserCursor(true);
-        moveEraserCursor(e.clientX, e.clientY);
-      }
+      updateBrushCursor();
+      showBrushCursor(true);
+      moveBrushCursor(e.clientX, e.clientY);
     });
 
     canvas.addEventListener('touchstart', (e) => {
-      if (tool === 'eraser' && e.touches.length > 0) {
-        showEraserCursor(true);
-        moveEraserCursor(e.touches[0].clientX, e.touches[0].clientY);
+      if (e.touches.length > 0) {
+        updateBrushCursor();
+        showBrushCursor(true);
+        moveBrushCursor(e.touches[0].clientX, e.touches[0].clientY);
       }
       startDraw(e);
     }, { passive: false });
     canvas.addEventListener('touchmove', (e) => {
-      if (tool === 'eraser' && e.touches.length > 0) {
-        moveEraserCursor(e.touches[0].clientX, e.touches[0].clientY);
+      if (e.touches.length > 0) {
+        moveBrushCursor(e.touches[0].clientX, e.touches[0].clientY);
       }
       moveDraw(e);
     }, { passive: false });
     canvas.addEventListener('touchend', (e) => {
-      eraserCursor.style.display = 'none';
+      brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
     canvas.addEventListener('touchcancel', (e) => {
-      eraserCursor.style.display = 'none';
+      brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
 
@@ -313,15 +317,14 @@
       tool = 'pen';
       document.getElementById('btn-pen').classList.add('active');
       document.getElementById('btn-eraser').classList.remove('active');
-      showEraserCursor(false);
+      updateBrushCursor();
     });
 
     document.getElementById('btn-eraser').addEventListener('click', () => {
       tool = 'eraser';
       document.getElementById('btn-eraser').classList.add('active');
       document.getElementById('btn-pen').classList.remove('active');
-      updateEraserCursorSize();
-      showEraserCursor(true);
+      updateBrushCursor();
     });
 
     document.getElementById('color-picker').addEventListener('input', (e) => {
@@ -329,7 +332,7 @@
       tool = 'pen';
       document.getElementById('btn-pen').classList.add('active');
       document.getElementById('btn-eraser').classList.remove('active');
-      showEraserCursor(false);
+      updateBrushCursor();
     });
 
     const sizeSlider = document.getElementById('stroke-size');
@@ -337,7 +340,7 @@
     sizeSlider.addEventListener('input', (e) => {
       strokeWidth = parseInt(e.target.value);
       sizeLabel.textContent = strokeWidth;
-      if (tool === 'eraser') updateEraserCursorSize();
+      updateBrushCursor();
     });
 
     document.getElementById('btn-undo').addEventListener('click', () => {
