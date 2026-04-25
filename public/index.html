@@ -167,7 +167,7 @@
     }
 
     function updateBrushCursor() {
-      const size = tool === 'eraser' ? strokeWidth * 3 : strokeWidth;
+      const size = strokeWidth;
       const displaySize = Math.max(size, 4);
       brushCursor.style.width = displaySize + 'px';
       brushCursor.style.height = displaySize + 'px';
@@ -240,7 +240,7 @@
       currentStroke = {
         points: [pos],
         color: strokeColor,
-        width: tool === 'eraser' ? strokeWidth * 3 : strokeWidth,
+        width: strokeWidth,
         eraser: tool === 'eraser'
       };
     }
