@@ -131,12 +131,12 @@
     <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
     </button>
-    <button id="btn-save" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Save">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    <button id="btn-refresh" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Refresh board">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
     </button>
   </div>
 
-  <div id="save-indicator" class="fixed bottom-4 right-4 bg-white/90 border border-zinc-300 rounded-lg px-3 py-1.5 text-xs text-zinc-500 z-50 opacity-0 pointer-events-none shadow">
+  <div id="status-indicator" class="fixed bottom-4 right-4 bg-white/90 border border-zinc-300 rounded-lg px-3 py-1.5 text-xs text-zinc-500 z-50 opacity-0 pointer-events-none shadow transition-opacity duration-300">
     Saved
   </div>
 
@@ -155,8 +155,6 @@
     let strokeColor = '#1c1917';
     let strokeWidth = 3;
     let isDrawing = false;
-    let dirty = false;
-    let autoSaveTimer = null;
     const brushCursor = document.getElementById('brush-cursor');
 
     function hexToRgba(hex, alpha) {
@@ -191,22 +189,20 @@
     }
 
     function resize() {
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      ctx.putImageData(data, 0, 0);
       redrawAll();
     }
 
     function redrawAll() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const s of strokes) {
-        drawStroke(s);
+        drawStroke(s.stroke_data || s);
       }
     }
 
     function drawStroke(s) {
-      if (s.points.length < 2) return;
+      if (!s.points || s.points.length < 2) return;
       ctx.beginPath();
       ctx.moveTo(s.points[0].x, s.points[0].y);
       for (let i = 1; i < s.points.length; i++) {
@@ -270,14 +266,21 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    function endDraw(e) {
+    async function endDraw(e) {
       if (!isDrawing || !currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
-        strokes.push(currentStroke);
-        redoStack = [];
-        dirty = true;
-        scheduleAutoSave();
+        const strokeData = {
+          points: currentStroke.points,
+          color: currentStroke.color,
+          width: currentStroke.width,
+          eraser: currentStroke.eraser
+        };
+        const saved = await saveStroke(strokeData);
+        if (saved) {
+          strokes.push({ id: saved.id, stroke_data: strokeData });
+          redoStack = [];
+        }
       }
       currentStroke = null;
       isDrawing = false;
@@ -352,33 +355,52 @@
       updateBrushCursor();
     });
 
-    document.getElementById('btn-undo').addEventListener('click', () => {
+    document.getElementById('btn-undo').addEventListener('click', async () => {
       if (strokes.length === 0) return;
+      const last = strokes[strokes.length - 1];
+      if (last.id) {
+        try {
+          await fetch('/api/strokes/' + last.id, {
+            method: 'DELETE',
+            headers: { ...headers }
+          });
+        } catch (err) {
+          console.error('Undo delete failed:', err);
+        }
+      }
       redoStack.push(strokes.pop());
       redrawAll();
-      dirty = true;
-      scheduleAutoSave();
     });
 
-    document.getElementById('btn-redo').addEventListener('click', () => {
+    document.getElementById('btn-redo').addEventListener('click', async () => {
       if (redoStack.length === 0) return;
-      strokes.push(redoStack.pop());
+      const stroke = redoStack.pop();
+      const data = stroke.stroke_data || stroke;
+      const saved = await saveStroke(data);
+      if (saved) {
+        stroke.id = saved.id;
+      }
+      strokes.push(stroke);
       redrawAll();
-      dirty = true;
-      scheduleAutoSave();
     });
 
-    document.getElementById('btn-clear').addEventListener('click', () => {
+    document.getElementById('btn-clear').addEventListener('click', async () => {
       if (strokes.length === 0) return;
-      if (!confirm('Clear the entire whiteboard?')) return;
+      if (!confirm('Clear the entire shared whiteboard?')) return;
+      try {
+        await fetch('/api/strokes', {
+          method: 'DELETE',
+          headers: { ...headers }
+        });
+      } catch (err) {
+        console.error('Clear failed:', err);
+      }
       strokes = [];
       redoStack = [];
       redrawAll();
-      dirty = true;
-      scheduleAutoSave();
     });
 
-    document.getElementById('btn-save').addEventListener('click', () => saveDrawing());
+    document.getElementById('btn-refresh').addEventListener('click', () => loadStrokes());
 
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -389,56 +411,41 @@
           document.getElementById('btn-undo').click();
         }
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        saveDrawing();
-      }
     });
 
-    function showSaveIndicator(text) {
-      const el = document.getElementById('save-indicator');
-      el.textContent = text || 'Saved';
+    function showStatus(text) {
+      const el = document.getElementById('status-indicator');
+      el.textContent = text;
       el.style.opacity = '1';
       setTimeout(() => { el.style.opacity = '0'; }, 2000);
     }
 
-    function scheduleAutoSave() {
-      if (autoSaveTimer) clearTimeout(autoSaveTimer);
-      autoSaveTimer = setTimeout(() => {
-        if (dirty) saveDrawing(true);
-      }, 5000);
-    }
-
-    async function saveDrawing(auto) {
-      if (strokes.length === 0 && !auto) {
-        showSaveIndicator('Nothing to save');
-        return;
-      }
+    async function saveStroke(strokeData) {
       try {
-        const res = await fetch('/api/drawing', {
+        const res = await fetch('/api/strokes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ drawing_data: { strokes }, title: 'Untitled' })
+          body: JSON.stringify({ stroke_data: strokeData })
         });
         if (res.ok) {
-          dirty = false;
-          showSaveIndicator(auto ? 'Auto-saved' : 'Saved');
+          return await res.json();
         }
       } catch (err) {
-        console.error('Save failed:', err);
-        showSaveIndicator('Save failed');
+        console.error('Save stroke failed:', err);
+        showStatus('Save failed');
       }
+      return null;
     }
 
-    async function loadDrawing() {
+    async function loadStrokes() {
       try {
-        const res = await fetch('/api/drawing', { headers });
+        const res = await fetch('/api/strokes', { headers });
         if (!res.ok) return;
-        const { drawing } = await res.json();
-        if (drawing && drawing.drawing_data && drawing.drawing_data.strokes) {
-          strokes = drawing.drawing_data.strokes;
-          redrawAll();
-        }
+        const data = await res.json();
+        strokes = data.strokes || [];
+        redoStack = [];
+        redrawAll();
+        showStatus('Board refreshed');
       } catch (err) {
         console.error('Load failed:', err);
       }
@@ -446,7 +453,7 @@
 
     window.addEventListener('resize', resize);
     resize();
-    loadDrawing();
+    loadStrokes();
   </script>
 </body>
 </html>

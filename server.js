@@ -27,41 +27,43 @@ app.use((req, res, next) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.get('/api/drawing', async (req, res) => {
+app.get('/api/strokes', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, drawing_data, title, updated_at FROM drawings
-       WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-      [req.user.id]
+      'SELECT id, user_id, username, stroke_data, created_at FROM strokes ORDER BY created_at ASC, id ASC'
     );
-    res.json({ drawing: rows[0] || null });
+    res.json({ strokes: rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/drawing', async (req, res) => {
+app.post('/api/strokes', async (req, res) => {
   try {
-    const { drawing_data, title } = req.body;
+    const { stroke_data } = req.body;
     const { rows } = await pool.query(
-      `SELECT id FROM drawings WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-      [req.user.id]
+      'INSERT INTO strokes (user_id, username, stroke_data) VALUES ($1, $2, $3) RETURNING id, created_at',
+      [req.user.id, req.user.username, JSON.stringify(stroke_data)]
     );
-    if (rows.length > 0) {
-      await pool.query(
-        `UPDATE drawings SET drawing_data = $1, title = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [JSON.stringify(drawing_data), title || 'Untitled', rows[0].id]
-      );
-      res.json({ ok: true, id: rows[0].id });
-    } else {
-      const ins = await pool.query(
-        `INSERT INTO drawings (user_id, username, drawing_data, title)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
-        [req.user.id, req.user.username, JSON.stringify(drawing_data), title || 'Untitled']
-      );
-      res.json({ ok: true, id: ins.rows[0].id });
-    }
+    res.json({ ok: true, id: rows[0].id, created_at: rows[0].created_at });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/strokes/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM strokes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/strokes', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM strokes');
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -85,14 +87,12 @@ app.get('*', (req, res) => {
 
 async function start() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS drawings (
+    CREATE TABLE IF NOT EXISTS strokes (
       id SERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
       username TEXT NOT NULL,
-      drawing_data JSONB,
-      title TEXT DEFAULT 'Untitled',
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+      stroke_data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
   app.listen(port, () => console.log(`Listening on :${port}`));
