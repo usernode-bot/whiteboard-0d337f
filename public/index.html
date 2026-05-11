@@ -185,7 +185,7 @@
     let offsetY = 0;
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 20;
-    const GRID_SIZE = 40;
+
 
     // Pan tracking
     let isPanning = false;
@@ -254,35 +254,10 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      drawGrid();
       for (const s of strokes) {
         drawStroke(s.stroke_data || s);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
-    function drawGrid() {
-      const screenGap = GRID_SIZE * scale;
-      if (screenGap < 4) return;
-
-      const worldLeft = (0 - offsetX) / scale;
-      const worldTop = (0 - offsetY) / scale;
-      const worldRight = (canvas.width - offsetX) / scale;
-      const worldBottom = (canvas.height - offsetY) / scale;
-
-      const startX = Math.floor(worldLeft / GRID_SIZE) * GRID_SIZE;
-      const startY = Math.floor(worldTop / GRID_SIZE) * GRID_SIZE;
-
-      const dotRadius = Math.max(0.8 / scale, 0.5);
-
-      ctx.fillStyle = '#d4d4d8';
-      for (let x = startX; x <= worldRight; x += GRID_SIZE) {
-        for (let y = startY; y <= worldBottom; y += GRID_SIZE) {
-          ctx.beginPath();
-          ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
     }
 
     function drawStroke(s) {
