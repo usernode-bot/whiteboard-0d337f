@@ -502,13 +502,20 @@
       }
     });
 
-    // Scroll-to-zoom (always active, any tool)
+    // Wheel: pinch-to-zoom (ctrlKey) or trackpad pan (no ctrlKey)
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const zoomFactor = 1.1;
-      const direction = e.deltaY < 0 ? 1 : -1;
-      const newScale = scale * Math.pow(zoomFactor, direction);
-      zoomAtPoint(e.clientX, e.clientY, newScale);
+      if (e.ctrlKey) {
+        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse)
+        const zoomFactor = 1.01;
+        const newScale = scale * Math.pow(zoomFactor, -e.deltaY);
+        zoomAtPoint(e.clientX, e.clientY, newScale);
+      } else {
+        // Two-finger scroll / trackpad pan / regular mouse wheel
+        offsetX -= e.deltaX;
+        offsetY -= e.deltaY;
+        redrawAll();
+      }
     }, { passive: false });
 
     // Double-click to reset view when in move mode
