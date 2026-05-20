@@ -185,6 +185,7 @@
     let offsetY = 0;
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 20;
+    let hasInitialResize = false;
 
 
     // Pan tracking
@@ -243,10 +244,11 @@
       const oldH = canvas.height;
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      if (oldW && oldH) {
+      if (hasInitialResize && oldW && oldH) {
         offsetX += (canvas.width - oldW) / 2;
         offsetY += (canvas.height - oldH) / 2;
       }
+      hasInitialResize = true;
       redrawAll();
     }
 
