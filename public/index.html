@@ -559,37 +559,45 @@
       }
     }
 
-    // Applies a fill stroke during redraw. Must be called while a transform is active;
-    // it resets to identity to read/write pixel data, then re-applies the saved transform.
     function applyFill(data) {
-      // Save current transform by reading state
-      const savedScale = scale;
-      const savedOffX = offsetX;
-      const savedOffY = offsetY;
-
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-      const sx = Math.round(data.x * savedScale + savedOffX);
-      const sy = Math.round(data.y * savedScale + savedOffY);
-      const cx = Math.max(0, Math.min(canvas.width - 1, sx));
-      const cy = Math.max(0, Math.min(canvas.height - 1, sy));
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const fillRgba = hexToRgbaArray(data.color);
-      const idx = (cy * canvas.width + cx) * 4;
-      const targetRgba = [
-        imageData.data[idx],
-        imageData.data[idx + 1],
-        imageData.data[idx + 2],
-        imageData.data[idx + 3]
-      ];
-
-      if (!colorsMatch(targetRgba, fillRgba, 0)) {
-        floodFill(imageData, cx, cy, targetRgba, fillRgba, data.tolerance != null ? data.tolerance : FILL_TOLERANCE);
-        ctx.putImageData(imageData, 0, 0);
+      if (data.polygon) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = data.color;
+        for (const contour of data.polygon) {
+          if (contour.length < 3) continue;
+          ctx.beginPath();
+          ctx.moveTo(contour[0].x, contour[0].y);
+          for (let i = 1; i < contour.length; i++) {
+            ctx.lineTo(contour[i].x, contour[i].y);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+        return;
       }
 
-      ctx.setTransform(savedScale, 0, 0, savedScale, savedOffX, savedOffY);
+      if (data.x != null && data.y != null) {
+        const savedScale = scale;
+        const savedOffX = offsetX;
+        const savedOffY = offsetY;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const sx = Math.round(data.x * savedScale + savedOffX);
+        const sy = Math.round(data.y * savedScale + savedOffY);
+        const cx = Math.max(0, Math.min(canvas.width - 1, sx));
+        const cy = Math.max(0, Math.min(canvas.height - 1, sy));
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const fillRgba = hexToRgbaArray(data.color);
+        const idx = (cy * canvas.width + cx) * 4;
+        const targetRgba = [
+          imageData.data[idx], imageData.data[idx + 1],
+          imageData.data[idx + 2], imageData.data[idx + 3]
+        ];
+        if (!colorsMatch(targetRgba, fillRgba, 0)) {
+          floodFill(imageData, cx, cy, targetRgba, fillRgba, data.tolerance != null ? data.tolerance : FILL_TOLERANCE);
+          ctx.putImageData(imageData, 0, 0);
+        }
+        ctx.setTransform(savedScale, 0, 0, savedScale, savedOffX, savedOffY);
+      }
     }
 
     function colorsMatch(a, b, tol) {
@@ -622,18 +630,15 @@
         if (visited[cy * w + cx]) continue;
         if (!colorsMatch(pixelAt(cx, cy), targetRgba, tol)) continue;
 
-        // Scan left
         let lx = cx;
         while (lx > 0 && !visited[cy * w + (lx - 1)] && colorsMatch(pixelAt(lx - 1, cy), targetRgba, tol)) {
           lx--;
         }
-        // Scan right
         let rx = cx;
         while (rx < w - 1 && !visited[cy * w + (rx + 1)] && colorsMatch(pixelAt(rx + 1, cy), targetRgba, tol)) {
           rx++;
         }
 
-        // Fill the span and queue rows above/below
         for (let x = lx; x <= rx; x++) {
           setPixel(x, cy);
           visited[cy * w + x] = 1;
@@ -646,7 +651,171 @@
           }
         }
       }
+      return visited;
     }
+
+    function traceContours(visited, w, h) {
+      const padW = w + 2;
+      const padH = h + 2;
+      const grid = new Uint8Array(padW * padH);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (visited[y * w + x]) grid[(y + 1) * padW + (x + 1)] = 1;
+        }
+      }
+
+      const contours = [];
+      const edgeSeen = new Uint8Array(padW * padH * 4);
+
+      for (let y = 0; y < padH - 1; y++) {
+        for (let x = 0; x < padW - 1; x++) {
+          const tl = grid[y * padW + x];
+          const tr = grid[y * padW + x + 1];
+          const bl = grid[(y + 1) * padW + x];
+          const br = grid[(y + 1) * padW + x + 1];
+          const cell = (tl << 3) | (tr << 2) | (br << 1) | bl;
+          if (cell === 0 || cell === 15) continue;
+
+          const edges = marchingSquaresEdges(cell);
+          for (const [d0, d1] of edges) {
+            const ek = (y * padW + x) * 4 + d0;
+            if (edgeSeen[ek]) continue;
+
+            const contour = traceMarchingContour(grid, padW, padH, x, y, d0, d1, edgeSeen);
+            if (contour.length >= 3) {
+              const worldContour = contour.map(p => ({ x: p.x - 1, y: p.y - 1 }));
+              contours.push(worldContour);
+            }
+          }
+        }
+      }
+      return contours;
+    }
+
+    function marchingSquaresEdges(cell) {
+      const E = [];
+      switch (cell) {
+        case 1:  E.push([3, 2]); break;
+        case 2:  E.push([2, 1]); break;
+        case 3:  E.push([3, 1]); break;
+        case 4:  E.push([1, 0]); break;
+        case 5:  E.push([3, 0]); E.push([1, 2]); break;
+        case 6:  E.push([2, 0]); break;
+        case 7:  E.push([3, 0]); break;
+        case 8:  E.push([0, 3]); break;
+        case 9:  E.push([0, 2]); break;
+        case 10: E.push([0, 1]); E.push([2, 3]); break;
+        case 11: E.push([0, 1]); break;
+        case 12: E.push([1, 3]); break;
+        case 13: E.push([1, 2]); break;
+        case 14: E.push([2, 3]); break;
+      }
+      return E;
+    }
+
+    function edgeMidpoint(cx, cy, dir) {
+      switch (dir) {
+        case 0: return { x: cx + 0.5, y: cy };
+        case 1: return { x: cx + 1, y: cy + 0.5 };
+        case 2: return { x: cx + 0.5, y: cy + 1 };
+        case 3: return { x: cx, y: cy + 0.5 };
+      }
+    }
+
+    function oppositeDir(d) { return (d + 2) % 4; }
+
+    function neighborCell(cx, cy, dir) {
+      switch (dir) {
+        case 0: return { x: cx, y: cy - 1 };
+        case 1: return { x: cx + 1, y: cy };
+        case 2: return { x: cx, y: cy + 1 };
+        case 3: return { x: cx - 1, y: cy };
+      }
+    }
+
+    function traceMarchingContour(grid, padW, padH, startCx, startCy, startD0, startD1, edgeSeen) {
+      const pts = [];
+      let cx = startCx, cy = startCy, exitDir = startD1;
+
+      const MAX_STEPS = padW * padH * 2;
+      for (let step = 0; step < MAX_STEPS; step++) {
+        const ek = (cy * padW + cx) * 4 + ((exitDir + 2) % 4);
+        edgeSeen[ek] = 1;
+
+        const mp = edgeMidpoint(cx, cy, exitDir);
+        pts.push(mp);
+
+        const nb = neighborCell(cx, cy, exitDir);
+        const ncx = nb.x, ncy = nb.y;
+
+        if (ncx < 0 || ncx >= padW - 1 || ncy < 0 || ncy >= padH - 1) break;
+
+        const entryDir = oppositeDir(exitDir);
+        const tl = grid[ncy * padW + ncx];
+        const tr = grid[ncy * padW + ncx + 1];
+        const bl = grid[(ncy + 1) * padW + ncx];
+        const br = grid[(ncy + 1) * padW + ncx + 1];
+        const cell = (tl << 3) | (tr << 2) | (br << 1) | bl;
+
+        if (cell === 0 || cell === 15) break;
+
+        const edges = marchingSquaresEdges(cell);
+        let foundExit = -1;
+        for (const [d0, d1] of edges) {
+          if (d0 === entryDir) { foundExit = d1; break; }
+        }
+        if (foundExit === -1) break;
+
+        const ek2 = (ncy * padW + ncx) * 4 + entryDir;
+        edgeSeen[ek2] = 1;
+
+        cx = ncx;
+        cy = ncy;
+        exitDir = foundExit;
+
+        if (cx === startCx && cy === startCy && exitDir === startD1) break;
+      }
+      return pts;
+    }
+
+    function simplifyPolygon(points, maxPoints) {
+      if (points.length <= maxPoints) return points;
+      let epsilon = 0.5;
+      let result = douglasPeucker(points, epsilon);
+      while (result.length > maxPoints && epsilon < 1000) {
+        epsilon *= 1.5;
+        result = douglasPeucker(points, epsilon);
+      }
+      if (result.length > maxPoints) result = result.slice(0, maxPoints);
+      return result;
+    }
+
+    function douglasPeucker(points, epsilon) {
+      if (points.length <= 2) return points.slice();
+      let maxDist = 0, maxIdx = 0;
+      const first = points[0], last = points[points.length - 1];
+      for (let i = 1; i < points.length - 1; i++) {
+        const d = pointToSegmentDist(points[i], first, last);
+        if (d > maxDist) { maxDist = d; maxIdx = i; }
+      }
+      if (maxDist > epsilon) {
+        const left = douglasPeucker(points.slice(0, maxIdx + 1), epsilon);
+        const right = douglasPeucker(points.slice(maxIdx), epsilon);
+        return left.slice(0, -1).concat(right);
+      }
+      return [first, last];
+    }
+
+    function pointToSegmentDist(p, a, b) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+      let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    }
+
+    const FILL_MAX_POLYGON_POINTS = 10000;
 
     async function executeFill(e) {
       let sx, sy;
@@ -662,6 +831,7 @@
       sx = Math.max(0, Math.min(canvas.width - 1, sx));
       sy = Math.max(0, Math.min(canvas.height - 1, sy));
 
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const idx = (sy * canvas.width + sx) * 4;
       const targetRgba = [
@@ -672,13 +842,22 @@
       ];
       const fillRgba = hexToRgbaArray(strokeColor);
 
-      if (colorsMatch(targetRgba, fillRgba, FILL_TOLERANCE)) return;
+      if (colorsMatch(targetRgba, fillRgba, FILL_TOLERANCE)) {
+        ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+        return;
+      }
 
-      floodFill(imageData, sx, sy, targetRgba, fillRgba, FILL_TOLERANCE);
+      const visited = floodFill(imageData, sx, sy, targetRgba, fillRgba, FILL_TOLERANCE);
       ctx.putImageData(imageData, 0, 0);
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
 
-      const worldPos = screenToWorld(sx, sy);
-      const strokeData = { type: 'fill', x: worldPos.x, y: worldPos.y, color: strokeColor, tolerance: FILL_TOLERANCE };
+      const contours = traceContours(visited, canvas.width, canvas.height);
+      const worldContours = contours.map(c => {
+        const worldPts = c.map(p => screenToWorld(p.x, p.y));
+        return simplifyPolygon(worldPts, FILL_MAX_POLYGON_POINTS);
+      });
+
+      const strokeData = { type: 'fill', color: strokeColor, polygon: worldContours };
       const saved = await saveStroke(strokeData);
       if (saved) {
         strokes.push({ id: saved.id, stroke_data: strokeData });
@@ -1241,7 +1420,13 @@
           const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
           strokes.push({ id: data.id, stroke_data: strokeData });
           if (strokeData.type === 'fill') {
-            applyFill(strokeData);
+            if (strokeData.polygon) {
+              ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+              applyFill(strokeData);
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+            } else {
+              applyFill(strokeData);
+            }
           } else {
             ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
             drawStroke(strokeData);
