@@ -83,6 +83,23 @@ app.delete('/api/strokes/:id', async (req, res) => {
   }
 });
 
+app.patch('/api/strokes/:id', async (req, res) => {
+  try {
+    const { stroke_data } = req.body;
+    const { rows } = await pool.query(
+      'UPDATE strokes SET stroke_data = $1 WHERE id = $2 AND user_id = $3 RETURNING id, user_id, username, created_at',
+      [JSON.stringify(stroke_data), req.params.id, req.user.id]
+    );
+    if (rows.length === 0) {
+      return res.status(403).json({ error: 'Not found or not authorized' });
+    }
+    res.json({ ok: true });
+    broadcast('update', { id: rows[0].id, user_id: rows[0].user_id, username: rows[0].username, stroke_data, created_at: rows[0].created_at });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/strokes', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes');

@@ -89,6 +89,9 @@
     #save-indicator { transition: opacity 0.3s; }
     canvas.panning { cursor: grab !important; }
     canvas.panning:active { cursor: grabbing !important; }
+    .icon-palette-btn { transition: all 0.15s; color: #3f3f46; }
+    .icon-palette-btn:hover { background: rgba(124, 58, 237, 0.1); }
+    .icon-palette-btn.active { background: rgba(124, 58, 237, 0.15); box-shadow: 0 0 0 2px #7c3aed; }
     @media (max-width: 640px) {
       .toolbar { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
@@ -110,6 +113,9 @@
     </button>
     <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+    </button>
+    <button id="btn-icons" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Icons">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
     </button>
 
     <div class="w-px h-8 bg-zinc-300 mx-1"></div>
@@ -144,6 +150,11 @@
     </button>
   </div>
 
+  <!-- Icon palette popover -->
+  <div id="icon-palette" class="toolbar fixed left-1/2 -translate-x-1/2 bg-white/90 border border-zinc-300 rounded-2xl px-3 py-3 z-50 shadow-lg hidden" style="top: 4.5rem;">
+    <div id="icon-palette-grid" class="grid grid-cols-4 gap-1.5"></div>
+  </div>
+
   <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 border border-zinc-300 rounded-lg px-3 py-1.5 text-xs text-zinc-500 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
     100%
   </div>
@@ -163,6 +174,75 @@
   </div>
 
   <script>
+    // ---- ICONS CONSTANT ----
+    const ICONS = {
+      star: {
+        label: 'Star', fill: true,
+        path: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'
+      },
+      heart: {
+        label: 'Heart', fill: true,
+        path: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z'
+      },
+      check: {
+        label: 'Check', fill: false,
+        path: 'M20 6 9 17l-5-5'
+      },
+      cross: {
+        label: 'Cross', fill: false,
+        path: 'M18 6 6 18M6 6l12 12'
+      },
+      'arrow-up': {
+        label: 'Arrow Up', fill: false,
+        path: 'M12 19V5M5 12l7-7 7 7'
+      },
+      'arrow-right': {
+        label: 'Arrow Right', fill: false,
+        path: 'M5 12h14M12 5l7 7-7 7'
+      },
+      lightning: {
+        label: 'Lightning', fill: true,
+        path: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z'
+      },
+      circle: {
+        label: 'Circle', fill: false,
+        path: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z'
+      },
+      square: {
+        label: 'Square', fill: false,
+        path: 'M3 3h18v18H3z'
+      },
+      triangle: {
+        label: 'Triangle', fill: true,
+        path: 'M12 2l10 19H2z'
+      },
+      'thumbs-up': {
+        label: 'Thumbs Up', fill: false,
+        path: 'M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3'
+      },
+      smiley: {
+        label: 'Smiley', fill: false,
+        path: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01'
+      },
+      fire: {
+        label: 'Fire', fill: true,
+        path: 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'
+      },
+      flag: {
+        label: 'Flag', fill: false,
+        path: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7'
+      },
+      lock: {
+        label: 'Lock', fill: false,
+        path: 'M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4'
+      },
+      warning: {
+        label: 'Warning', fill: false,
+        path: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01'
+      }
+    };
+
+    // ---- INIT ----
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
@@ -170,6 +250,7 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
+    // ---- STATE ----
     let strokes = [];
     let redoStack = [];
     let currentStroke = null;
@@ -187,7 +268,6 @@
     const MAX_SCALE = 20;
     let hasInitialResize = false;
 
-
     // Pan tracking
     let isPanning = false;
     let panStartX = 0;
@@ -203,6 +283,15 @@
     // Spacebar-hold for temporary move mode
     let previousTool = null;
 
+    // Icon tool state
+    let selectedStrokeId = null;   // id of the currently selected icon
+    let selectedIconId = null;     // icon type key chosen from palette
+    let iconDragMode = null;       // 'move' | 'resize' | null
+    let iconDragStartWorld = null; // {x, y} world pos at drag start
+    let iconDragStartData = null;  // snapshot of {x, y, size} at drag start
+    let iconResizeCenterWorld = null; // {x, y} world center of icon being resized
+
+    // ---- UTILITY ----
     function hexToRgba(hex, alpha) {
       const r = parseInt(hex.slice(1, 3), 16);
       const g = parseInt(hex.slice(3, 5), 16);
@@ -210,6 +299,27 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
+    function worldToScreen(wx, wy) {
+      return { x: wx * scale + offsetX, y: wy * scale + offsetY };
+    }
+
+    function screenToWorld(sx, sy) {
+      return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
+    }
+
+    function getPos(e) {
+      let sx, sy;
+      if (e.touches && e.touches.length > 0) {
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+      } else {
+        sx = e.clientX;
+        sy = e.clientY;
+      }
+      return screenToWorld(sx, sy);
+    }
+
+    // ---- BRUSH CURSOR ----
     function updateBrushCursor() {
       const size = strokeWidth * scale;
       const displaySize = Math.max(size, 4);
@@ -230,15 +340,16 @@
     }
 
     function showBrushCursor(show) {
-      if (tool === 'move') {
+      if (tool === 'move' || tool === 'icon') {
         brushCursor.style.display = 'none';
-        canvas.style.cursor = 'grab';
+        canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
       canvas.style.cursor = show ? 'none' : 'crosshair';
     }
 
+    // ---- CANVAS RESIZE ----
     function resize() {
       const oldW = canvas.width;
       const oldH = canvas.height;
@@ -252,17 +363,28 @@
       redrawAll();
     }
 
-    function redrawAll() {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      for (const s of strokes) {
-        drawStroke(s.stroke_data || s);
-      }
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
+    // ---- DRAW FUNCTIONS ----
     function drawStroke(s) {
+      if (s.type === 'icon') {
+        if (!ICONS[s.iconId]) return;
+        ctx.save();
+        ctx.translate(s.x - s.size / 2, s.y - s.size / 2);
+        ctx.scale(s.size / 24, s.size / 24);
+        const p = new Path2D(ICONS[s.iconId].path);
+        if (ICONS[s.iconId].fill) {
+          ctx.fillStyle = s.color;
+          ctx.fill(p);
+        } else {
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke(p);
+        }
+        ctx.restore();
+        return;
+      }
+
       if (!s.points || s.points.length < 2) return;
       ctx.beginPath();
       ctx.moveTo(s.points[0].x, s.points[0].y);
@@ -282,22 +404,43 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    function screenToWorld(sx, sy) {
-      return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
-    }
-
-    function getPos(e) {
-      let sx, sy;
-      if (e.touches && e.touches.length > 0) {
-        sx = e.touches[0].clientX;
-        sy = e.touches[0].clientY;
-      } else {
-        sx = e.clientX;
-        sy = e.clientY;
+    function redrawAll() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      for (const s of strokes) {
+        drawStroke(s.stroke_data || s);
       }
-      return screenToWorld(sx, sy);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+      // Draw selection ring and resize handle for selected icon
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const tl = worldToScreen(sd.x - sd.size / 2, sd.y - sd.size / 2);
+            const br = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            const w = br.x - tl.x;
+            const h = br.y - tl.y;
+
+            ctx.save();
+            ctx.strokeStyle = '#7c3aed';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
+            ctx.setLineDash([]);
+
+            // Resize handle at bottom-right
+            ctx.fillStyle = '#7c3aed';
+            ctx.fillRect(br.x - 4, br.y - 4, 8, 8);
+            ctx.restore();
+          }
+        }
+      }
     }
 
+    // ---- ZOOM / PAN ----
     function zoomAtPoint(cx, cy, newScale) {
       newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
       const ratio = newScale / scale;
@@ -327,21 +470,207 @@
       showStatus('View reset');
     }
 
+    // ---- TOOL MANAGEMENT ----
     function setActiveTool(newTool) {
       tool = newTool;
       document.getElementById('btn-pen').classList.toggle('active', newTool === 'pen');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
+      document.getElementById('btn-icons').classList.toggle('active', newTool === 'icon');
+
+      // Clear icon interaction state when switching away from icon tool
+      if (newTool !== 'icon') {
+        selectedStrokeId = null;
+        iconDragMode = null;
+        document.getElementById('icon-palette').classList.add('hidden');
+        redrawAll();
+      }
+
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
+      } else if (newTool === 'icon') {
+        canvas.style.cursor = 'crosshair';
+        brushCursor.style.display = 'none';
+        canvas.classList.remove('panning');
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
       }
     }
 
+    // ---- ICON CURSOR FEEDBACK ----
+    function updateIconCursor(cx, cy) {
+      // Check resize handle of selected icon first
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const hScreen = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            if (Math.abs(cx - hScreen.x) <= 10 && Math.abs(cy - hScreen.y) <= 10) {
+              canvas.style.cursor = 'nwse-resize';
+              return;
+            }
+          }
+        }
+      }
+      // Check any icon hit
+      const wp = screenToWorld(cx, cy);
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i];
+        const sd = s.stroke_data || s;
+        if (sd.type !== 'icon' || !ICONS[sd.iconId]) continue;
+        const half = sd.size / 2;
+        if (wp.x >= sd.x - half && wp.x <= sd.x + half &&
+            wp.y >= sd.y - half && wp.y <= sd.y + half) {
+          canvas.style.cursor = 'move';
+          return;
+        }
+      }
+      canvas.style.cursor = 'crosshair';
+    }
+
+    // ---- ICON INTERACTION ----
+    async function placeIcon(wx, wy) {
+      const strokeData = {
+        type: 'icon',
+        iconId: selectedIconId,
+        x: wx,
+        y: wy,
+        size: 48,
+        color: strokeColor
+      };
+      const saved = await saveStroke(strokeData);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: strokeData });
+        redoStack = [];
+        redrawAll();
+      }
+    }
+
+    function handleIconMousedown(clientX, clientY) {
+      const wp = screenToWorld(clientX, clientY);
+
+      // 1. Check resize handle of currently selected icon
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const hScreen = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            if (Math.abs(clientX - hScreen.x) <= 10 && Math.abs(clientY - hScreen.y) <= 10) {
+              iconDragMode = 'resize';
+              iconResizeCenterWorld = { x: sd.x, y: sd.y };
+              iconDragStartData = { x: sd.x, y: sd.y, size: sd.size };
+              canvas.style.cursor = 'nwse-resize';
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Hit test all icons (reverse = top-most first)
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i];
+        const sd = s.stroke_data || s;
+        if (sd.type !== 'icon' || !ICONS[sd.iconId]) continue;
+        const half = sd.size / 2;
+        if (wp.x >= sd.x - half && wp.x <= sd.x + half &&
+            wp.y >= sd.y - half && wp.y <= sd.y + half) {
+          selectedStrokeId = s.id;
+          iconDragMode = 'move';
+          iconDragStartWorld = { x: wp.x, y: wp.y };
+          iconDragStartData = { x: sd.x, y: sd.y, size: sd.size };
+          canvas.style.cursor = 'grabbing';
+          redrawAll();
+          return;
+        }
+      }
+
+      // 3. No hit — deselect and place new icon
+      selectedStrokeId = null;
+      redrawAll();
+
+      if (!selectedIconId) {
+        showStatus('Select an icon first');
+        return;
+      }
+      placeIcon(wp.x, wp.y);
+    }
+
+    function handleIconMousemove(clientX, clientY) {
+      if (!iconDragMode || selectedStrokeId === null) return;
+      const wp = screenToWorld(clientX, clientY);
+      const entry = strokes.find(s => s.id === selectedStrokeId);
+      if (!entry) return;
+      const sd = entry.stroke_data || entry;
+
+      if (iconDragMode === 'move') {
+        const dx = wp.x - iconDragStartWorld.x;
+        const dy = wp.y - iconDragStartWorld.y;
+        sd.x = iconDragStartData.x + dx;
+        sd.y = iconDragStartData.y + dy;
+      } else if (iconDragMode === 'resize') {
+        const dist = Math.sqrt(
+          (wp.x - iconResizeCenterWorld.x) ** 2 +
+          (wp.y - iconResizeCenterWorld.y) ** 2
+        );
+        sd.size = Math.max(12, Math.min(256, dist * Math.SQRT2));
+      }
+      redrawAll();
+    }
+
+    async function handleIconMouseup() {
+      if (!iconDragMode || selectedStrokeId === null) {
+        iconDragMode = null;
+        return;
+      }
+      const mode = iconDragMode;
+      iconDragMode = null;
+      canvas.style.cursor = 'crosshair';
+
+      const entry = strokes.find(s => s.id === selectedStrokeId);
+      if (entry) {
+        const sd = entry.stroke_data || entry;
+        const ok = await saveIconUpdate(selectedStrokeId, sd);
+        if (!ok && iconDragStartData) {
+          // Revert local state on failure
+          sd.x = iconDragStartData.x;
+          sd.y = iconDragStartData.y;
+          sd.size = iconDragStartData.size;
+          redrawAll();
+        }
+      }
+    }
+
+    async function saveIconUpdate(strokeId, strokeData) {
+      try {
+        const res = await fetch('/api/strokes/' + strokeId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ stroke_data: strokeData })
+        });
+        if (res.status === 403) {
+          showStatus('Not your icon to move');
+          loadStrokes();
+          return false;
+        }
+        if (res.status === 404) {
+          showStatus('Icon no longer exists');
+          loadStrokes();
+          return false;
+        }
+        return res.ok;
+      } catch (err) {
+        console.error('Update icon failed:', err);
+        showStatus('Update failed');
+        return false;
+      }
+    }
+
+    // ---- PINCH HELPERS ----
     function getPinchDist(t1, t2) {
       const dx = t1.clientX - t2.clientX;
       const dy = t1.clientY - t2.clientY;
@@ -352,6 +681,7 @@
       return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
     }
 
+    // ---- DRAWING ----
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
       if (tool === 'move') return;
@@ -413,7 +743,7 @@
       isDrawing = false;
     }
 
-    // --- Mouse event listeners ---
+    // ---- MOUSE EVENT LISTENERS ----
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.target.closest('.toolbar')) return;
@@ -439,17 +769,31 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
+      // Icon mode
+      if (tool === 'icon' && e.button === 0) {
+        e.preventDefault();
+        handleIconMousedown(e.clientX, e.clientY);
+        return;
+      }
       startDraw(e);
     });
 
     canvas.addEventListener('mousemove', (e) => {
-      if (tool !== 'move') {
+      if (tool !== 'move' && tool !== 'icon') {
         moveBrushCursor(e.clientX, e.clientY);
       }
       if (isPanning) {
         offsetX = panStartOffsetX + (e.clientX - panStartX);
         offsetY = panStartOffsetY + (e.clientY - panStartY);
         redrawAll();
+        return;
+      }
+      if (iconDragMode) {
+        handleIconMousemove(e.clientX, e.clientY);
+        return;
+      }
+      if (tool === 'icon') {
+        updateIconCursor(e.clientX, e.clientY);
         return;
       }
       moveDraw(e);
@@ -459,6 +803,10 @@
       if (isPanning) {
         isPanning = false;
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
+        return;
+      }
+      if (iconDragMode) {
+        handleIconMouseup();
         return;
       }
       endDraw(e);
@@ -471,12 +819,18 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (iconDragMode) {
+        handleIconMouseup();
+        return;
+      }
       endDraw(e);
     });
 
     canvas.addEventListener('mouseenter', (e) => {
       if (tool === 'move') {
         canvas.style.cursor = 'grab';
+      } else if (tool === 'icon') {
+        updateIconCursor(e.clientX, e.clientY);
       } else {
         updateBrushCursor();
         showBrushCursor(true);
@@ -488,12 +842,10 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
-        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse)
         const zoomFactor = 1.01;
         const newScale = scale * Math.pow(zoomFactor, -e.deltaY);
         zoomAtPoint(e.clientX, e.clientY, newScale);
       } else {
-        // Two-finger scroll / trackpad pan / regular mouse wheel
         offsetX -= e.deltaX;
         offsetY -= e.deltaY;
         redrawAll();
@@ -508,7 +860,7 @@
       }
     });
 
-    // --- Touch event listeners ---
+    // ---- TOUCH EVENT LISTENERS ----
 
     canvas.addEventListener('touchstart', (e) => {
       if (e.target.closest('.toolbar')) return;
@@ -527,6 +879,14 @@
           const mid = getPinchMid(e.touches[0], e.touches[1]);
           lastPinchMidX = mid.x;
           lastPinchMidY = mid.y;
+        }
+        return;
+      }
+
+      if (tool === 'icon') {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          handleIconMousedown(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -551,7 +911,6 @@
           const dist = getPinchDist(e.touches[0], e.touches[1]);
           const mid = getPinchMid(e.touches[0], e.touches[1]);
 
-          // Zoom
           let newScale = scale * (dist / lastPinchDist);
           newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
           const ratio = newScale / scale;
@@ -559,7 +918,6 @@
           offsetY = mid.y - (mid.y - offsetY) * ratio;
           scale = newScale;
 
-          // Pan (midpoint delta)
           offsetX += mid.x - lastPinchMidX;
           offsetY += mid.y - lastPinchMidY;
 
@@ -569,6 +927,14 @@
 
           updateZoomIndicator();
           redrawAll();
+        }
+        return;
+      }
+
+      if (tool === 'icon') {
+        e.preventDefault();
+        if (e.touches.length === 1 && iconDragMode) {
+          handleIconMousemove(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -585,6 +951,10 @@
         isPanning = false;
         return;
       }
+      if (tool === 'icon') {
+        if (iconDragMode) handleIconMouseup();
+        return;
+      }
       brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
@@ -592,6 +962,10 @@
     canvas.addEventListener('touchcancel', (e) => {
       if (tool === 'move') {
         isPanning = false;
+        return;
+      }
+      if (tool === 'icon') {
+        iconDragMode = null;
         return;
       }
       brushCursor.style.display = 'none';
@@ -602,11 +976,21 @@
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('gesturechange', (e) => e.preventDefault());
 
-    // --- Tool button handlers ---
+    // ---- TOOLBAR BUTTON HANDLERS ----
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+
+    document.getElementById('btn-icons').addEventListener('click', () => {
+      if (tool === 'icon') {
+        // Toggle palette when already in icon mode
+        document.getElementById('icon-palette').classList.toggle('hidden');
+      } else {
+        setActiveTool('icon');
+        document.getElementById('icon-palette').classList.remove('hidden');
+      }
+    });
 
     document.getElementById('color-picker').addEventListener('input', (e) => {
       strokeColor = e.target.value;
@@ -624,6 +1008,11 @@
     document.getElementById('btn-undo').addEventListener('click', async () => {
       if (strokes.length === 0) return;
       const last = strokes[strokes.length - 1];
+      // Clear selection if undoing the selected icon
+      if (last.id === selectedStrokeId) {
+        selectedStrokeId = null;
+        iconDragMode = null;
+      }
       if (last.id) {
         try {
           await fetch('/api/strokes/' + last.id, {
@@ -701,6 +1090,28 @@
         e.preventDefault();
         resetView();
       }
+      // Escape: cancel icon drag or close palette
+      if (e.key === 'Escape') {
+        if (iconDragMode && selectedStrokeId !== null) {
+          const entry = strokes.find(s => s.id === selectedStrokeId);
+          if (entry && iconDragStartData) {
+            const sd = entry.stroke_data || entry;
+            sd.x = iconDragStartData.x;
+            sd.y = iconDragStartData.y;
+            sd.size = iconDragStartData.size;
+          }
+          iconDragMode = null;
+          canvas.style.cursor = 'crosshair';
+          redrawAll();
+          e.preventDefault();
+          return;
+        }
+        if (!document.getElementById('icon-palette').classList.contains('hidden')) {
+          document.getElementById('icon-palette').classList.add('hidden');
+          e.preventDefault();
+          return;
+        }
+      }
       // Spacebar hold for temporary move mode
       if (e.key === ' ' && !e.repeat && previousTool === null) {
         e.preventDefault();
@@ -713,6 +1124,16 @@
       if (e.key === ' ' && previousTool !== null) {
         setActiveTool(previousTool);
         previousTool = null;
+      }
+    });
+
+    // Close icon palette when clicking outside
+    document.addEventListener('click', (e) => {
+      const palette = document.getElementById('icon-palette');
+      if (!palette.classList.contains('hidden')) {
+        if (!e.target.closest('#icon-palette') && !e.target.closest('#btn-icons')) {
+          palette.classList.add('hidden');
+        }
       }
     });
 
@@ -751,6 +1172,8 @@
         const data = await res.json();
         strokes = data.strokes || [];
         redoStack = [];
+        selectedStrokeId = null;
+        iconDragMode = null;
         redrawAll();
         showStatus('Board refreshed');
       } catch (err) {
@@ -774,10 +1197,23 @@
         }
       });
 
+      es.addEventListener('update', (e) => {
+        const data = JSON.parse(e.data);
+        const entry = strokes.find(s => s.id === data.id);
+        if (entry) {
+          entry.stroke_data = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
+          redrawAll();
+        }
+      });
+
       es.addEventListener('undo', (e) => {
         const data = JSON.parse(e.data);
         const idx = strokes.findIndex(s => s.id === data.id);
         if (idx !== -1) {
+          if (strokes[idx].id === selectedStrokeId) {
+            selectedStrokeId = null;
+            iconDragMode = null;
+          }
           strokes.splice(idx, 1);
           redrawAll();
         }
@@ -786,6 +1222,8 @@
       es.addEventListener('clear', () => {
         strokes = [];
         redoStack = [];
+        selectedStrokeId = null;
+        iconDragMode = null;
         redrawAll();
       });
 
@@ -795,6 +1233,33 @@
       };
     }
 
+    // ---- BUILD ICON PALETTE ----
+    (function buildPalette() {
+      const grid = document.getElementById('icon-palette-grid');
+      for (const [id, icon] of Object.entries(ICONS)) {
+        const btn = document.createElement('button');
+        btn.className = 'icon-palette-btn w-10 h-10 rounded-xl flex items-center justify-center';
+        btn.title = icon.label;
+        btn.dataset.iconId = id;
+
+        const fillAttr = icon.fill ? 'currentColor' : 'none';
+        const strokeAttr = icon.fill ? 'none' : 'currentColor';
+        btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="${fillAttr}" stroke="${strokeAttr}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon.path}"/></svg>`;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedIconId = id;
+          document.querySelectorAll('.icon-palette-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('icon-palette').classList.add('hidden');
+          showStatus(icon.label + ' selected');
+        });
+
+        grid.appendChild(btn);
+      }
+    })();
+
+    // ---- INIT ----
     window.addEventListener('resize', resize);
     resize();
     loadStrokes();
