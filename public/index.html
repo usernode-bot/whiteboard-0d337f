@@ -105,6 +105,9 @@
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
     </button>
+    <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
+      <div style="width:20px;height:20px;border-radius:50%;background:conic-gradient(#ff0000,#ff8800,#ffff00,#00cc00,#0066ff,#8800ff,#ff0000);"></div>
+    </button>
     <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
     </button>
@@ -210,6 +213,17 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
+    function hslToHex(h, s, l) {
+      s /= 100; l /= 100;
+      const a = s * Math.min(l, 1 - l);
+      function f(n) {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+      }
+      return '#' + f(0) + f(8) + f(4);
+    }
+
     function updateBrushCursor() {
       const size = strokeWidth * scale;
       const displaySize = Math.max(size, 4);
@@ -218,6 +232,9 @@
       if (tool === 'eraser') {
         brushCursor.style.background = 'rgba(200, 200, 200, 0.5)';
         brushCursor.style.boxShadow = '0 0 0 1px rgba(160, 160, 160, 0.6)';
+      } else if (tool === 'rainbow') {
+        brushCursor.style.background = 'conic-gradient(red, orange, yellow, green, blue, violet, red)';
+        brushCursor.style.boxShadow = 'none';
       } else {
         brushCursor.style.background = hexToRgba(strokeColor, 0.75);
         brushCursor.style.boxShadow = 'none';
@@ -264,22 +281,36 @@
 
     function drawStroke(s) {
       if (!s.points || s.points.length < 2) return;
-      ctx.beginPath();
-      ctx.moveTo(s.points[0].x, s.points[0].y);
-      for (let i = 1; i < s.points.length; i++) {
-        ctx.lineTo(s.points[i].x, s.points[i].y);
-      }
-      ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
-      ctx.lineWidth = s.width;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      if (s.eraser) {
-        ctx.globalCompositeOperation = 'destination-out';
+      if (s.rainbow && s.colors) {
+        ctx.lineWidth = s.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+        for (let i = 1; i < s.points.length; i++) {
+          ctx.beginPath();
+          ctx.moveTo(s.points[i - 1].x, s.points[i - 1].y);
+          ctx.lineTo(s.points[i].x, s.points[i].y);
+          ctx.strokeStyle = s.colors[i - 1] || '#ff0000';
+          ctx.stroke();
+        }
       } else {
+        ctx.beginPath();
+        ctx.moveTo(s.points[0].x, s.points[0].y);
+        for (let i = 1; i < s.points.length; i++) {
+          ctx.lineTo(s.points[i].x, s.points[i].y);
+        }
+        ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
+        ctx.lineWidth = s.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (s.eraser) {
+          ctx.globalCompositeOperation = 'destination-out';
+        } else {
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
       }
-      ctx.stroke();
-      ctx.globalCompositeOperation = 'source-over';
     }
 
     function screenToWorld(sx, sy) {
@@ -330,6 +361,7 @@
     function setActiveTool(newTool) {
       tool = newTool;
       document.getElementById('btn-pen').classList.toggle('active', newTool === 'pen');
+      document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       if (newTool === 'move') {
@@ -358,12 +390,24 @@
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
-      currentStroke = {
-        points: [pos],
-        color: strokeColor,
-        width: strokeWidth,
-        eraser: tool === 'eraser'
-      };
+      if (tool === 'rainbow') {
+        currentStroke = {
+          points: [pos],
+          color: null,
+          colors: [],
+          width: strokeWidth,
+          eraser: false,
+          rainbow: true,
+          _hueOffset: 0
+        };
+      } else {
+        currentStroke = {
+          points: [pos],
+          color: strokeColor,
+          width: strokeWidth,
+          eraser: tool === 'eraser'
+        };
+      }
     }
 
     function moveDraw(e) {
@@ -372,6 +416,16 @@
       const pos = getPos(e);
       currentStroke.points.push(pos);
 
+      let segmentColor;
+      if (currentStroke.rainbow) {
+        const hue = (currentStroke._hueOffset * 5) % 360;
+        segmentColor = hslToHex(hue, 100, 50);
+        currentStroke.colors.push(segmentColor);
+        currentStroke._hueOffset++;
+      } else {
+        segmentColor = currentStroke.eraser ? '#ffffff' : currentStroke.color;
+      }
+
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
       ctx.beginPath();
       const pts = currentStroke.points;
@@ -379,7 +433,7 @@
         ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
         ctx.lineTo(pos.x, pos.y);
       }
-      ctx.strokeStyle = currentStroke.eraser ? '#ffffff' : currentStroke.color;
+      ctx.strokeStyle = segmentColor;
       ctx.lineWidth = currentStroke.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -397,12 +451,23 @@
       if (!isDrawing || !currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
-        const strokeData = {
-          points: currentStroke.points,
-          color: currentStroke.color,
-          width: currentStroke.width,
-          eraser: currentStroke.eraser
-        };
+        let strokeData;
+        if (currentStroke.rainbow) {
+          strokeData = {
+            points: currentStroke.points,
+            colors: currentStroke.colors,
+            width: currentStroke.width,
+            eraser: false,
+            rainbow: true
+          };
+        } else {
+          strokeData = {
+            points: currentStroke.points,
+            color: currentStroke.color,
+            width: currentStroke.width,
+            eraser: currentStroke.eraser
+          };
+        }
         const saved = await saveStroke(strokeData);
         if (saved) {
           strokes.push({ id: saved.id, stroke_data: strokeData });
@@ -605,6 +670,7 @@
     // --- Tool button handlers ---
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
+    document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
 
