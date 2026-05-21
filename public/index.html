@@ -108,6 +108,9 @@
     <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
       <div style="width:20px;height:20px;border-radius:50%;background:conic-gradient(#ff0000,#ff8800,#ffff00,#00cc00,#0066ff,#8800ff,#ff0000);"></div>
     </button>
+    <button id="btn-invert" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Invert Brush">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg>
+    </button>
     <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
     </button>
@@ -247,6 +250,9 @@
       } else if (tool === 'rainbow') {
         brushCursor.style.background = 'conic-gradient(red, orange, yellow, green, blue, violet, red)';
         brushCursor.style.boxShadow = 'none';
+      } else if (tool === 'invert') {
+        brushCursor.style.background = 'linear-gradient(135deg, #000 50%, #fff 50%)';
+        brushCursor.style.boxShadow = '0 0 0 1px rgba(160, 160, 160, 0.6)';
       } else {
         brushCursor.style.background = hexToRgba(strokeColor, 0.75);
         brushCursor.style.boxShadow = 'none';
@@ -316,13 +322,17 @@
         for (let i = 1; i < s.points.length; i++) {
           ctx.lineTo(s.points[i].x, s.points[i].y);
         }
-        ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
         ctx.lineWidth = s.width;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        if (s.eraser) {
+        if (s.invert) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalCompositeOperation = 'difference';
+        } else if (s.eraser) {
+          ctx.strokeStyle = '#ffffff';
           ctx.globalCompositeOperation = 'destination-out';
         } else {
+          ctx.strokeStyle = s.color;
           ctx.globalCompositeOperation = 'source-over';
         }
         ctx.stroke();
@@ -506,6 +516,7 @@
       tool = newTool;
       document.getElementById('btn-pen').classList.toggle('active', newTool === 'pen');
       document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
+      document.getElementById('btn-invert').classList.toggle('active', newTool === 'invert');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-bucket').classList.toggle('active', newTool === 'bucket');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
@@ -549,6 +560,12 @@
           rainbow: true,
           _hueOffset: 0
         };
+      } else if (tool === 'invert') {
+        currentStroke = {
+          points: [pos],
+          width: strokeWidth,
+          invert: true
+        };
       } else {
         currentStroke = {
           points: [pos],
@@ -571,6 +588,8 @@
         segmentColor = hslToHex(hue, 100, 50);
         currentStroke.colors.push(segmentColor);
         currentStroke._hueOffset++;
+      } else if (currentStroke.invert) {
+        segmentColor = '#ffffff';
       } else {
         segmentColor = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       }
@@ -586,7 +605,9 @@
       ctx.lineWidth = currentStroke.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      if (currentStroke.eraser) {
+      if (currentStroke.invert) {
+        ctx.globalCompositeOperation = 'difference';
+      } else if (currentStroke.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
         ctx.globalCompositeOperation = 'source-over';
@@ -608,6 +629,12 @@
             width: currentStroke.width,
             eraser: false,
             rainbow: true
+          };
+        } else if (currentStroke.invert) {
+          strokeData = {
+            points: currentStroke.points,
+            width: currentStroke.width,
+            invert: true
           };
         } else {
           strokeData = {
@@ -839,6 +866,7 @@
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
+    document.getElementById('btn-invert').addEventListener('click', () => setActiveTool('invert'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-bucket').addEventListener('click', () => setActiveTool('bucket'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
