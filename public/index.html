@@ -166,19 +166,24 @@
     .reaction-btn:active { transform: scale(0.92); }
 
     /* Reaction burst animation — Google Meet style, floats up from bottom */
-    @keyframes reaction-float {
-      0%   { opacity: 1; transform: translateY(0) translateX(0) scale(0.5); }
-      10%  { opacity: 1; transform: translateY(-5vh) translateX(var(--drift-mid)) scale(1.1); }
-      75%  { opacity: 1; transform: translateY(-60vh) translateX(var(--drift-end)) scale(1); }
-      100% { opacity: 0; transform: translateY(-72vh) translateX(var(--drift-end)) scale(0.9); }
+    @keyframes reaction-rise {
+      0%   { transform: translateY(0)                          translateX(0)                        scale(0.15) rotate(0deg);   opacity: 0; }
+      8%   { transform: translateY(calc(var(--rise) * -0.06)) translateX(calc(var(--dx1) * 0.2))   scale(var(--scale-peak))    rotate(calc(var(--rot) * 0.1deg)); opacity: 1; }
+      15%  { transform: translateY(calc(var(--rise) * -0.12)) translateX(calc(var(--dx1) * 0.45))  scale(var(--scale-base))    rotate(calc(var(--rot) * 0.3deg)); opacity: 1; }
+      35%  { transform: translateY(calc(var(--rise) * -0.32)) translateX(var(--dx1))               scale(var(--scale-base))    rotate(calc(var(--rot) * 0.7deg)); opacity: 1; }
+      55%  { transform: translateY(calc(var(--rise) * -0.54)) translateX(calc(var(--dx1) * 0.4))   scale(var(--scale-base))    rotate(calc(var(--rot) * 1.0deg)); opacity: 1; }
+      70%  { transform: translateY(calc(var(--rise) * -0.70)) translateX(var(--dx2))               scale(var(--scale-base))    rotate(calc(var(--rot) * 0.6deg)); opacity: 1; }
+      85%  { transform: translateY(calc(var(--rise) * -0.85)) translateX(calc(var(--dx2) * 0.6))   scale(calc(var(--scale-base) * 0.95)) rotate(calc(var(--rot) * 0.2deg)); opacity: 0.6; }
+      100% { transform: translateY(var(--rise))                translateX(0)                        scale(calc(var(--scale-base) * 0.85)) rotate(0deg);            opacity: 0; }
     }
     .reaction-burst {
       position: fixed;
       font-size: 3.25rem;
       line-height: 1;
       pointer-events: none;
-      transform-origin: center bottom;
-      animation: reaction-float var(--reaction-dur, 3.7s) cubic-bezier(0.33, 1, 0.68, 1) forwards;
+      transform-origin: center center;
+      will-change: transform, opacity;
+      animation: reaction-rise var(--reaction-dur, 4.2s) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
     }
 
     @media (max-width: 640px) {
@@ -420,18 +425,40 @@
       const el = document.createElement('div');
       el.className = 'reaction-burst';
       el.textContent = emoji;
-      // Random horizontal position between 10% and 90% of viewport width
+
+      // Random horizontal spawn position, avoiding edges
       const x = window.innerWidth * (0.10 + Math.random() * 0.80);
       el.style.left = x + 'px';
       el.style.bottom = '0px';
-      // Random horizontal drift: -25 to +25px at midpoint, same direction further at end
-      const driftSign = Math.random() < 0.5 ? -1 : 1;
-      const driftMag = 12 + Math.random() * 22;
-      el.style.setProperty('--drift-mid', (driftSign * driftMag * 0.6) + 'px');
-      el.style.setProperty('--drift-end', (driftSign * driftMag) + 'px');
-      // Slight random duration variation so simultaneous reactions feel organic
-      const dur = (3.2 + Math.random() * 0.9).toFixed(2) + 's';
+
+      // Rise height: 65–75vh, randomised per spawn
+      const riseVh = -(65 + Math.random() * 10);
+      el.style.setProperty('--rise', riseVh + 'vh');
+
+      // S-curve horizontal drift: dx1 is the first lean, dx2 crosses back (or continues)
+      // Some spawn a C-curve (same sign), others an S-curve (opposite signs)
+      const amp1 = 20 + Math.random() * 30;                        // 20–50px
+      const sign1 = Math.random() < 0.5 ? 1 : -1;
+      const isCurve = Math.random() < 0.45;                        // 45% C-curve, 55% S-curve
+      const amp2 = 15 + Math.random() * 25;
+      const sign2 = isCurve ? sign1 : -sign1;
+      el.style.setProperty('--dx1', (sign1 * amp1) + 'px');
+      el.style.setProperty('--dx2', (sign2 * amp2) + 'px');
+
+      // Subtle rotation drift: ±15deg, consistent direction with the first lean
+      const rot = (8 + Math.random() * 7) * sign1;                 // 8–15deg
+      el.style.setProperty('--rot', rot + '');
+
+      // Per-spawn scale: base 0.85–1.15, peak slightly above base for entrance pop
+      const base = 0.85 + Math.random() * 0.30;
+      const peak = base + 0.12 + Math.random() * 0.10;
+      el.style.setProperty('--scale-base', base.toFixed(3));
+      el.style.setProperty('--scale-peak', peak.toFixed(3));
+
+      // Duration 3.8–5.2s for organic spread across simultaneous reactions
+      const dur = (3.8 + Math.random() * 1.4).toFixed(2) + 's';
       el.style.setProperty('--reaction-dur', dur);
+
       overlay.appendChild(el);
       el.addEventListener('animationend', () => el.remove(), { once: true });
     }
