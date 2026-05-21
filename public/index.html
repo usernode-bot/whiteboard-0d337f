@@ -165,18 +165,20 @@
     .reaction-btn:hover { transform: scale(1.18); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
     .reaction-btn:active { transform: scale(0.92); }
 
-    /* Reaction burst animation */
-    @keyframes reaction-burst {
-      0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
-      18%  { transform: translate(-50%, calc(-50% - 12px)) scale(1.65); }
-      100% { opacity: 0; transform: translate(-50%, calc(-50% - 85px)) scale(0.85); }
+    /* Reaction burst animation — Google Meet style, floats up from bottom */
+    @keyframes reaction-float {
+      0%   { opacity: 1; transform: translateY(0) translateX(0) scale(0.5); }
+      10%  { opacity: 1; transform: translateY(-5vh) translateX(var(--drift-mid)) scale(1.1); }
+      75%  { opacity: 1; transform: translateY(-60vh) translateX(var(--drift-end)) scale(1); }
+      100% { opacity: 0; transform: translateY(-72vh) translateX(var(--drift-end)) scale(0.9); }
     }
     .reaction-burst {
-      position: absolute;
-      font-size: 2rem;
+      position: fixed;
+      font-size: 3.25rem;
       line-height: 1;
       pointer-events: none;
-      animation: reaction-burst 2.5s ease-out forwards;
+      transform-origin: center bottom;
+      animation: reaction-float var(--reaction-dur, 3.7s) cubic-bezier(0.33, 1, 0.68, 1) forwards;
     }
 
     @media (max-width: 640px) {
@@ -192,7 +194,7 @@
   <canvas id="canvas"></canvas>
 
   <!-- Overlay for remote cursors and reaction bursts (pointer-events: none) -->
-  <div id="cursor-overlay" style="position:fixed;inset:0;z-index:38;pointer-events:none;overflow:hidden"></div>
+  <div id="cursor-overlay" style="position:fixed;inset:0;z-index:38;pointer-events:none"></div>
 
   <div id="brush-cursor"></div>
 
@@ -413,14 +415,23 @@
       }
     }
 
-    function spawnReactionBurst(emoji, canvasX, canvasY) {
-      const { x, y } = worldToScreen(canvasX, canvasY);
+    function spawnReactionBurst(emoji) {
       const overlay = document.getElementById('cursor-overlay');
       const el = document.createElement('div');
       el.className = 'reaction-burst';
       el.textContent = emoji;
+      // Random horizontal position between 10% and 90% of viewport width
+      const x = window.innerWidth * (0.10 + Math.random() * 0.80);
       el.style.left = x + 'px';
-      el.style.top = y + 'px';
+      el.style.bottom = '0px';
+      // Random horizontal drift: -25 to +25px at midpoint, same direction further at end
+      const driftSign = Math.random() < 0.5 ? -1 : 1;
+      const driftMag = 12 + Math.random() * 22;
+      el.style.setProperty('--drift-mid', (driftSign * driftMag * 0.6) + 'px');
+      el.style.setProperty('--drift-end', (driftSign * driftMag) + 'px');
+      // Slight random duration variation so simultaneous reactions feel organic
+      const dur = (3.2 + Math.random() * 0.9).toFixed(2) + 's';
+      el.style.setProperty('--reaction-dur', dur);
       overlay.appendChild(el);
       el.addEventListener('animationend', () => el.remove(), { once: true });
     }
@@ -1181,13 +1192,11 @@
     document.querySelectorAll('.reaction-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const emoji = btn.dataset.emoji;
-        const x = lastCursorCanvasX;
-        const y = lastCursorCanvasY;
-        spawnReactionBurst(emoji, x, y);
+        spawnReactionBurst(emoji);
         fetch('/api/reaction', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ emoji, x, y })
+          body: JSON.stringify({ emoji, x: lastCursorCanvasX, y: lastCursorCanvasY })
         }).catch(() => {});
       });
     });
@@ -1287,9 +1296,9 @@
       });
 
       es.addEventListener('reaction', (e) => {
-        const { username, emoji, x, y } = JSON.parse(e.data);
+        const { username, emoji } = JSON.parse(e.data);
         if (username === myUsername) return; // already rendered locally on click
-        spawnReactionBurst(emoji, x, y);
+        spawnReactionBurst(emoji);
       });
 
       es.onerror = () => {
