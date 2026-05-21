@@ -9,13 +9,38 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
-const sseClients = new Set();
+let clientIdCounter = 0;
+const sseClients = new Map(); // clientId -> { res, username }
+const connectedUsers = new Map(); // username -> { color, count }
+const cursorMap = new Map(); // username -> { x, y, idleTimer }
 
-function broadcast(event, data) {
+const REACTION_ALLOWLIST = new Set(['🔥', '✨', '💥', '👏', '🌀']);
+
+function usernameToColor(username) {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 50%)`;
+}
+
+function broadcastAll(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of sseClients) {
+  for (const { res } of sseClients.values()) {
     res.write(msg);
   }
+}
+
+function broadcastExceptUsername(event, data, excludeUsername) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const { res, username } of sseClients.values()) {
+    if (username !== excludeUsername) res.write(msg);
+  }
+}
+
+function getPresenceList() {
+  return [...connectedUsers.entries()].map(([username, { color }]) => ({ username, color }));
 }
 
 const PUBLIC_API_PATHS = new Set(['/health']);
@@ -54,8 +79,38 @@ app.get('/api/strokes/stream', (req, res) => {
     Connection: 'keep-alive'
   });
   res.write('\n');
-  sseClients.add(res);
-  req.on('close', () => sseClients.delete(res));
+
+  const clientId = ++clientIdCounter;
+  const username = req.user.username;
+  const color = usernameToColor(username);
+
+  sseClients.set(clientId, { res, username });
+
+  if (connectedUsers.has(username)) {
+    connectedUsers.get(username).count++;
+  } else {
+    connectedUsers.set(username, { color, count: 1 });
+  }
+  broadcastAll('presence', { users: getPresenceList() });
+
+  req.on('close', () => {
+    sseClients.delete(clientId);
+
+    if (cursorMap.has(username)) {
+      clearTimeout(cursorMap.get(username).idleTimer);
+      cursorMap.delete(username);
+    }
+
+    const user = connectedUsers.get(username);
+    if (user) {
+      user.count--;
+      if (user.count <= 0) {
+        connectedUsers.delete(username);
+        broadcastAll('cursor_leave', { username });
+        broadcastAll('presence', { users: getPresenceList() });
+      }
+    }
+  });
 });
 
 app.post('/api/strokes', async (req, res) => {
@@ -67,7 +122,7 @@ app.post('/api/strokes', async (req, res) => {
     );
     const result = { ok: true, id: rows[0].id, created_at: rows[0].created_at };
     res.json(result);
-    broadcast('stroke', { id: rows[0].id, user_id: req.user.id, username: req.user.username, stroke_data, created_at: rows[0].created_at });
+    broadcastAll('stroke', { id: rows[0].id, user_id: req.user.id, username: req.user.username, stroke_data, created_at: rows[0].created_at });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -77,7 +132,7 @@ app.delete('/api/strokes/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
     res.json({ ok: true });
-    broadcast('undo', { id: parseInt(req.params.id) });
+    broadcastAll('undo', { id: parseInt(req.params.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -87,10 +142,44 @@ app.delete('/api/strokes', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes');
     res.json({ ok: true });
-    broadcast('clear', {});
+    broadcastAll('clear', {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.post('/api/cursor', (req, res) => {
+  const { x, y } = req.body;
+  if (typeof x !== 'number' || typeof y !== 'number') {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  const username = req.user.username;
+  const color = usernameToColor(username);
+
+  if (cursorMap.has(username)) {
+    clearTimeout(cursorMap.get(username).idleTimer);
+  }
+  const idleTimer = setTimeout(() => {
+    cursorMap.delete(username);
+    broadcastAll('cursor_leave', { username });
+  }, 15000);
+  cursorMap.set(username, { x, y, idleTimer });
+
+  broadcastExceptUsername('cursor', { username, color, x, y }, username);
+  res.json({ ok: true });
+});
+
+app.post('/api/reaction', (req, res) => {
+  const { emoji, x, y } = req.body;
+  if (!REACTION_ALLOWLIST.has(emoji)) {
+    return res.status(400).json({ error: 'Invalid emoji' });
+  }
+  if (typeof x !== 'number' || typeof y !== 'number') {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  const username = req.user.username;
+  broadcastAll('reaction', { username, emoji, x, y });
+  res.json({ ok: true });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
