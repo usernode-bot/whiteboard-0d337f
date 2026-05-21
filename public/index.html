@@ -114,6 +114,9 @@
     <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
     </button>
+    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Upload Image">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </button>
 
     <div class="w-px h-8 bg-zinc-300 mx-1"></div>
 
@@ -165,6 +168,8 @@
     </div>
   </div>
 
+  <input id="img-file-input" type="file" accept="image/*" class="hidden" style="display:none">
+
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
@@ -205,6 +210,12 @@
 
     // Spacebar-hold for temporary move mode
     let previousTool = null;
+
+    // Image upload state
+    let pendingImageData = null;
+    let pendingImageSize = null;
+    let imageToolPreviousTool = null;
+    const imageCache = new WeakMap();
 
     function hexToRgba(hex, alpha) {
       const r = parseInt(hex.slice(1, 3), 16);
@@ -252,6 +263,11 @@
         canvas.style.cursor = 'grab';
         return;
       }
+      if (tool === 'image') {
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
       brushCursor.style.display = show ? 'block' : 'none';
       canvas.style.cursor = show ? 'none' : 'crosshair';
     }
@@ -280,6 +296,20 @@
     }
 
     function drawStroke(s) {
+      if (s.type === 'image') {
+        let img = imageCache.get(s);
+        if (!img) {
+          img = new Image();
+          img.onload = () => redrawAll();
+          img.src = s.src;
+          imageCache.set(s, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(img, s.x, s.y, s.width, s.height);
+        }
+        return;
+      }
       if (!s.points || s.points.length < 2) return;
       if (s.rainbow && s.colors) {
         ctx.lineWidth = s.width;
@@ -364,13 +394,19 @@
       document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
+      document.getElementById('btn-image').classList.toggle('active', newTool === 'image');
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
       } else {
         canvas.classList.remove('panning');
-        updateBrushCursor();
+        if (newTool === 'image') {
+          canvas.style.cursor = 'crosshair';
+          brushCursor.style.display = 'none';
+        } else {
+          updateBrushCursor();
+        }
       }
     }
 
@@ -504,6 +540,12 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
+      // Left click in image mode: place pending image
+      if (tool === 'image' && e.button === 0) {
+        e.preventDefault();
+        if (pendingImageData) placeImage(e.clientX, e.clientY);
+        return;
+      }
       startDraw(e);
     });
 
@@ -542,6 +584,9 @@
     canvas.addEventListener('mouseenter', (e) => {
       if (tool === 'move') {
         canvas.style.cursor = 'grab';
+      } else if (tool === 'image') {
+        canvas.style.cursor = 'crosshair';
+        brushCursor.style.display = 'none';
       } else {
         updateBrushCursor();
         showBrushCursor(true);
@@ -592,6 +637,15 @@
           const mid = getPinchMid(e.touches[0], e.touches[1]);
           lastPinchMidX = mid.x;
           lastPinchMidY = mid.y;
+        }
+        return;
+      }
+
+      // Image placement mode
+      if (tool === 'image') {
+        e.preventDefault();
+        if (e.touches.length === 1 && pendingImageData) {
+          placeImage(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -673,6 +727,45 @@
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+    document.getElementById('btn-image').addEventListener('click', () => {
+      document.getElementById('img-file-input').click();
+    });
+
+    document.getElementById('img-file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showStatus('Please select an image file');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (re) => {
+        const dataUrl = re.target.result;
+        if (dataUrl.length > 9 * 1024 * 1024) {
+          showStatus('Image too large — please use a smaller file');
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          let w = img.naturalWidth;
+          let h = img.naturalHeight;
+          const MAX_W = 800, MAX_H = 600;
+          if (w > MAX_W || h > MAX_H) {
+            const ratio = Math.min(MAX_W / w, MAX_H / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          pendingImageData = dataUrl;
+          pendingImageSize = { width: w, height: h };
+          imageToolPreviousTool = tool;
+          setActiveTool('image');
+          showStatus('Click canvas to place image (Esc to cancel)');
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    });
 
     document.getElementById('color-picker').addEventListener('input', (e) => {
       strokeColor = e.target.value;
@@ -767,6 +860,15 @@
         e.preventDefault();
         resetView();
       }
+      // Escape to cancel image placement
+      if (e.key === 'Escape' && tool === 'image') {
+        pendingImageData = null;
+        pendingImageSize = null;
+        const prev = imageToolPreviousTool || 'pen';
+        imageToolPreviousTool = null;
+        setActiveTool(prev);
+        showStatus('Image placement cancelled');
+      }
       // Spacebar hold for temporary move mode
       if (e.key === ' ' && !e.repeat && previousTool === null) {
         e.preventDefault();
@@ -808,6 +910,30 @@
         showStatus('Save failed');
       }
       return null;
+    }
+
+    async function placeImage(screenX, screenY) {
+      if (!pendingImageData || !pendingImageSize) return;
+      const { x, y } = screenToWorld(screenX, screenY);
+      const strokeData = {
+        type: 'image',
+        src: pendingImageData,
+        x,
+        y,
+        width: pendingImageSize.width,
+        height: pendingImageSize.height
+      };
+      pendingImageData = null;
+      pendingImageSize = null;
+      const prev = imageToolPreviousTool || 'pen';
+      imageToolPreviousTool = null;
+      setActiveTool(prev);
+      const saved = await saveStroke(strokeData);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: strokeData });
+        redoStack = [];
+        redrawAll();
+      }
     }
 
     async function loadStrokes() {
