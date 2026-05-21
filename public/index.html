@@ -295,6 +295,8 @@
         const data = s.stroke_data || s;
         if (data.type === 'fill') {
           applyFill(data);
+        } else if (data.invert) {
+          applyInvert(data);
         } else {
           drawStroke(data);
         }
@@ -325,10 +327,7 @@
         ctx.lineWidth = s.width;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        if (s.invert) {
-          ctx.strokeStyle = '#ffffff';
-          ctx.globalCompositeOperation = 'difference';
-        } else if (s.eraser) {
+        if (s.eraser) {
           ctx.strokeStyle = '#ffffff';
           ctx.globalCompositeOperation = 'destination-out';
         } else {
@@ -338,6 +337,48 @@
         ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
       }
+    }
+
+    function applyInvert(data) {
+      if (!data.points || data.points.length < 2) return;
+      const savedScale = scale;
+      const savedOffX = offsetX;
+      const savedOffY = offsetY;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const mask = document.createElement('canvas');
+      mask.width = w;
+      mask.height = h;
+      const mctx = mask.getContext('2d');
+      mctx.setTransform(savedScale, 0, 0, savedScale, savedOffX, savedOffY);
+      mctx.lineWidth = data.width;
+      mctx.lineCap = 'round';
+      mctx.lineJoin = 'round';
+      mctx.strokeStyle = '#ffffff';
+      mctx.beginPath();
+      mctx.moveTo(data.points[0].x, data.points[0].y);
+      for (let i = 1; i < data.points.length; i++) {
+        mctx.lineTo(data.points[i].x, data.points[i].y);
+      }
+      mctx.stroke();
+
+      const maskData = mctx.getImageData(0, 0, w, h);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const md = maskData.data;
+      const id = imageData.data;
+      for (let i = 0; i < md.length; i += 4) {
+        if (md[i + 3] > 0) {
+          const a = md[i + 3] / 255;
+          id[i]     = Math.round(id[i]     + a * (255 - 2 * id[i]));
+          id[i + 1] = Math.round(id[i + 1] + a * (255 - 2 * id[i + 1]));
+          id[i + 2] = Math.round(id[i + 2] + a * (255 - 2 * id[i + 2]));
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      ctx.setTransform(savedScale, 0, 0, savedScale, savedOffX, savedOffY);
     }
 
     // Applies a fill stroke during redraw. Must be called while a transform is active;
@@ -582,14 +623,24 @@
       const pos = getPos(e);
       currentStroke.points.push(pos);
 
+      if (currentStroke.invert) {
+        const pts = currentStroke.points;
+        if (pts.length >= 2) {
+          const segData = {
+            points: [pts[pts.length - 2], pos],
+            width: currentStroke.width
+          };
+          applyInvert(segData);
+        }
+        return;
+      }
+
       let segmentColor;
       if (currentStroke.rainbow) {
         const hue = (currentStroke._hueOffset * 5) % 360;
         segmentColor = hslToHex(hue, 100, 50);
         currentStroke.colors.push(segmentColor);
         currentStroke._hueOffset++;
-      } else if (currentStroke.invert) {
-        segmentColor = '#ffffff';
       } else {
         segmentColor = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       }
@@ -605,9 +656,7 @@
       ctx.lineWidth = currentStroke.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      if (currentStroke.invert) {
-        ctx.globalCompositeOperation = 'difference';
-      } else if (currentStroke.eraser) {
+      if (currentStroke.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
         ctx.globalCompositeOperation = 'source-over';
@@ -1036,6 +1085,8 @@
           strokes.push({ id: data.id, stroke_data: strokeData });
           if (strokeData.type === 'fill') {
             applyFill(strokeData);
+          } else if (strokeData.invert) {
+            applyInvert(strokeData);
           } else {
             ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
             drawStroke(strokeData);
