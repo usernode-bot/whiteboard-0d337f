@@ -212,9 +212,6 @@
     let previousTool = null;
 
     // Image upload state
-    let pendingImageData = null;
-    let pendingImageSize = null;
-    let imageToolPreviousTool = null;
     const imageCache = new WeakMap();
 
     function hexToRgba(hex, alpha) {
@@ -261,11 +258,6 @@
       if (tool === 'move') {
         brushCursor.style.display = 'none';
         canvas.style.cursor = 'grab';
-        return;
-      }
-      if (tool === 'image') {
-        brushCursor.style.display = 'none';
-        canvas.style.cursor = 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
@@ -394,19 +386,13 @@
       document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
-      document.getElementById('btn-image').classList.toggle('active', newTool === 'image');
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
       } else {
         canvas.classList.remove('panning');
-        if (newTool === 'image') {
-          canvas.style.cursor = 'crosshair';
-          brushCursor.style.display = 'none';
-        } else {
-          updateBrushCursor();
-        }
+        updateBrushCursor();
       }
     }
 
@@ -540,12 +526,6 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
-      // Left click in image mode: place pending image
-      if (tool === 'image' && e.button === 0) {
-        e.preventDefault();
-        if (pendingImageData) placeImage(e.clientX, e.clientY);
-        return;
-      }
       startDraw(e);
     });
 
@@ -584,9 +564,6 @@
     canvas.addEventListener('mouseenter', (e) => {
       if (tool === 'move') {
         canvas.style.cursor = 'grab';
-      } else if (tool === 'image') {
-        canvas.style.cursor = 'crosshair';
-        brushCursor.style.display = 'none';
       } else {
         updateBrushCursor();
         showBrushCursor(true);
@@ -637,15 +614,6 @@
           const mid = getPinchMid(e.touches[0], e.touches[1]);
           lastPinchMidX = mid.x;
           lastPinchMidY = mid.y;
-        }
-        return;
-      }
-
-      // Image placement mode
-      if (tool === 'image') {
-        e.preventDefault();
-        if (e.touches.length === 1 && pendingImageData) {
-          placeImage(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -756,11 +724,8 @@
             w = Math.round(w * ratio);
             h = Math.round(h * ratio);
           }
-          pendingImageData = dataUrl;
-          pendingImageSize = { width: w, height: h };
-          imageToolPreviousTool = tool;
-          setActiveTool('image');
-          showStatus('Click canvas to place image (Esc to cancel)');
+          const center = screenToWorld(canvas.width / 2, canvas.height / 2);
+          placeImage(dataUrl, center.x - w / 2, center.y - h / 2, w, h);
         };
         img.src = dataUrl;
       };
@@ -860,15 +825,6 @@
         e.preventDefault();
         resetView();
       }
-      // Escape to cancel image placement
-      if (e.key === 'Escape' && tool === 'image') {
-        pendingImageData = null;
-        pendingImageSize = null;
-        const prev = imageToolPreviousTool || 'pen';
-        imageToolPreviousTool = null;
-        setActiveTool(prev);
-        showStatus('Image placement cancelled');
-      }
       // Spacebar hold for temporary move mode
       if (e.key === ' ' && !e.repeat && previousTool === null) {
         e.preventDefault();
@@ -912,22 +868,8 @@
       return null;
     }
 
-    async function placeImage(screenX, screenY) {
-      if (!pendingImageData || !pendingImageSize) return;
-      const { x, y } = screenToWorld(screenX, screenY);
-      const strokeData = {
-        type: 'image',
-        src: pendingImageData,
-        x,
-        y,
-        width: pendingImageSize.width,
-        height: pendingImageSize.height
-      };
-      pendingImageData = null;
-      pendingImageSize = null;
-      const prev = imageToolPreviousTool || 'pen';
-      imageToolPreviousTool = null;
-      setActiveTool(prev);
+    async function placeImage(src, x, y, width, height) {
+      const strokeData = { type: 'image', src, x, y, width, height };
       const saved = await saveStroke(strokeData);
       if (saved) {
         strokes.push({ id: saved.id, stroke_data: strokeData });
