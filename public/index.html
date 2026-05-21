@@ -364,16 +364,15 @@
       }
       mctx.stroke();
 
-      const maskData = mctx.getImageData(0, 0, w, h);
+      const maskPixels = mctx.getImageData(0, 0, w, h).data;
       const imageData = ctx.getImageData(0, 0, w, h);
-      const md = maskData.data;
       const id = imageData.data;
-      for (let i = 0; i < md.length; i += 4) {
-        if (md[i + 3] > 0) {
-          const a = md[i + 3] / 255;
-          id[i]     = Math.round(id[i]     + a * (255 - 2 * id[i]));
-          id[i + 1] = Math.round(id[i + 1] + a * (255 - 2 * id[i + 1]));
-          id[i + 2] = Math.round(id[i + 2] + a * (255 - 2 * id[i + 2]));
+      for (let p = 0; p < w * h; p++) {
+        if (maskPixels[p * 4 + 3] > 0) {
+          const j = p * 4;
+          id[j]     = 255 - id[j];
+          id[j + 1] = 255 - id[j + 1];
+          id[j + 2] = 255 - id[j + 2];
         }
       }
       ctx.putImageData(imageData, 0, 0);
@@ -602,10 +601,15 @@
           _hueOffset: 0
         };
       } else if (tool === 'invert') {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
         currentStroke = {
           points: [pos],
           width: strokeWidth,
-          invert: true
+          invert: true,
+          _snapshot: snap,
+          _visited: new Uint8Array(canvas.width * canvas.height)
         };
       } else {
         currentStroke = {
@@ -625,13 +629,43 @@
 
       if (currentStroke.invert) {
         const pts = currentStroke.points;
-        if (pts.length >= 2) {
-          const segData = {
-            points: [pts[pts.length - 2], pos],
-            width: currentStroke.width
-          };
-          applyInvert(segData);
+        if (pts.length < 2) return;
+        const w = canvas.width;
+        const h = canvas.height;
+        const mask = document.createElement('canvas');
+        mask.width = w;
+        mask.height = h;
+        const mctx = mask.getContext('2d');
+        mctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+        mctx.lineWidth = currentStroke.width;
+        mctx.lineCap = 'round';
+        mctx.lineJoin = 'round';
+        mctx.strokeStyle = '#ffffff';
+        mctx.beginPath();
+        mctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          mctx.lineTo(pts[i].x, pts[i].y);
         }
+        mctx.stroke();
+        const maskData = mctx.getImageData(0, 0, w, h).data;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const id = imageData.data;
+        const sd = currentStroke._snapshot.data;
+        const visited = currentStroke._visited;
+        let changed = false;
+        for (let p = 0; p < w * h; p++) {
+          if (maskData[p * 4 + 3] > 0 && !visited[p]) {
+            visited[p] = 1;
+            const j = p * 4;
+            id[j]     = 255 - sd[j];
+            id[j + 1] = 255 - sd[j + 1];
+            id[j + 2] = 255 - sd[j + 2];
+            changed = true;
+          }
+        }
+        if (changed) ctx.putImageData(imageData, 0, 0);
+        ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
         return;
       }
 
