@@ -128,9 +128,24 @@ app.post('/api/strokes', async (req, res) => {
   }
 });
 
+app.put('/api/strokes/:id', async (req, res) => {
+  try {
+    const { stroke_data } = req.body;
+    const { rowCount } = await pool.query(
+      'UPDATE strokes SET stroke_data = $1 WHERE id = $2',
+      [JSON.stringify(stroke_data), req.params.id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+    broadcastAll('update', { id: parseInt(req.params.id), stroke_data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/strokes/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM strokes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    await pool.query('DELETE FROM strokes WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
     broadcastAll('undo', { id: parseInt(req.params.id) });
   } catch (err) {

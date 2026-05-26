@@ -179,12 +179,65 @@
       animation: reaction-burst 2.5s ease-out forwards;
     }
 
+    /* Stamp tool button */
+    .stamp-btn {
+      width: 2.5rem;
+      height: 2.5rem;
+      font-size: 1.25rem;
+      background: rgba(255,255,255,0.94);
+      border: 2px solid #7c3aed;
+      border-radius: 0.75rem;
+      box-shadow: 0 1px 4px rgba(124,58,237,0.25);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.12s, box-shadow 0.12s;
+      user-select: none;
+      line-height: 1;
+      padding: 0;
+    }
+    .stamp-btn:hover { transform: scale(1.18); box-shadow: 0 3px 10px rgba(124,58,237,0.3); }
+    .stamp-btn:active { transform: scale(0.92); }
+    .stamp-btn.active { background: rgba(124,58,237,0.15); }
+
+    .stamp-divider {
+      height: 1px;
+      background: #d4d4d8;
+      width: 80%;
+      margin: 2px auto;
+    }
+
+    /* Stamp delete button */
+    .stamp-delete-btn {
+      position: fixed;
+      z-index: 55;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #ef4444;
+      color: white;
+      border: 2px solid white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1;
+      pointer-events: auto;
+      transition: transform 0.1s;
+    }
+    .stamp-delete-btn:hover { transform: scale(1.2); background: #dc2626; }
+
     @media (max-width: 640px) {
       .toolbar { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
       .reaction-btn { width: 2rem !important; height: 2rem !important; font-size: 1rem !important; }
+      .stamp-btn { width: 2rem !important; height: 2rem !important; font-size: 1rem !important; }
     }
   </style>
 </head>
@@ -260,6 +313,8 @@
     <button class="reaction-btn" data-emoji="💥" title="Boom">💥</button>
     <button class="reaction-btn" data-emoji="👏" title="Clap">👏</button>
     <button class="reaction-btn" data-emoji="🌀" title="Swirl">🌀</button>
+    <div class="stamp-divider"></div>
+    <button id="btn-stamp-smiley" class="stamp-btn" title="Place Smiley">😊</button>
   </div>
 
   <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
@@ -320,6 +375,16 @@
 
     // Spacebar-hold for temporary move mode
     let previousTool = null;
+
+    // Stamp tool state
+    let placingStamp = false;
+    let draggingStamp = null;
+    let resizeDebounceTimer = null;
+    let activeDeleteBtn = null;
+    let longPressTimer = null;
+    let stampPinchEntry = null;
+    let stampPinchStartSize = 0;
+    let stampPinchStartDist = 0;
 
     // --- Presence state ---
     const remoteCursors = new Map(); // username -> { el, canvasX, canvasY, idleTimer }
@@ -502,7 +567,12 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
       for (const s of strokes) {
-        drawStroke(s.stroke_data || s);
+        const data = s.stroke_data || s;
+        if (data.type === 'stamp') {
+          drawStamp(data);
+        } else {
+          drawStroke(data);
+        }
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       updateRemoteCursorPositions();
@@ -539,6 +609,77 @@
         }
         ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+
+    function drawStamp(s) {
+      ctx.font = s.size + 'px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillText(s.emoji, s.x, s.y);
+    }
+
+    function hitTestStamp(worldX, worldY) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const data = strokes[i].stroke_data || strokes[i];
+        if (data.type !== 'stamp') continue;
+        const halfSize = data.size / 2;
+        if (Math.abs(worldX - data.x) <= halfSize && Math.abs(worldY - data.y) <= halfSize) {
+          return strokes[i];
+        }
+      }
+      return null;
+    }
+
+    function dismissDeleteBtn() {
+      if (activeDeleteBtn) {
+        activeDeleteBtn.remove();
+        activeDeleteBtn = null;
+      }
+    }
+
+    function showDeleteBtn(entry) {
+      dismissDeleteBtn();
+      const data = entry.stroke_data || entry;
+      const screen = worldToScreen(data.x, data.y);
+      const btn = document.createElement('div');
+      btn.className = 'stamp-delete-btn';
+      btn.textContent = '✕';
+      btn.style.left = (screen.x + data.size * scale / 2 + 4) + 'px';
+      btn.style.top = (screen.y - data.size * scale / 2 - 4) + 'px';
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (entry.id) {
+          try {
+            await fetch('/api/strokes/' + entry.id, {
+              method: 'DELETE',
+              headers: { ...headers }
+            });
+          } catch (err) {
+            console.error('Delete stamp failed:', err);
+          }
+        }
+        const idx = strokes.indexOf(entry);
+        if (idx !== -1) strokes.splice(idx, 1);
+        dismissDeleteBtn();
+        redrawAll();
+      });
+      document.body.appendChild(btn);
+      activeDeleteBtn = btn;
+    }
+
+    async function updateStamp(entry) {
+      const data = entry.stroke_data || entry;
+      if (!entry.id) return;
+      try {
+        await fetch('/api/strokes/' + entry.id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ stroke_data: data })
+        });
+      } catch (err) {
+        console.error('Update stamp failed:', err);
       }
     }
 
@@ -713,6 +854,7 @@
       if (e.target.closest('.toolbar')) return;
       if (e.button === 1) {
         e.preventDefault();
+        dismissDeleteBtn();
         isPanning = true;
         panStartX = e.clientX;
         panStartY = e.clientY;
@@ -721,6 +863,46 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
+
+      if (placingStamp && e.button === 0) {
+        e.preventDefault();
+        const pos = screenToWorld(e.clientX, e.clientY);
+        const stampData = { type: 'stamp', emoji: '😊', x: pos.x, y: pos.y, size: 48 };
+        placingStamp = false;
+        canvas.style.cursor = 'crosshair';
+        document.getElementById('btn-stamp-smiley').classList.remove('active');
+        saveStroke(stampData).then(saved => {
+          if (saved) {
+            strokes.push({ id: saved.id, stroke_data: stampData });
+            redoStack = [];
+            redrawAll();
+            showStatus('Scroll over emoji to resize');
+          }
+        });
+        return;
+      }
+
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      const hitStamp = hitTestStamp(worldPos.x, worldPos.y);
+
+      if (hitStamp && e.button === 0) {
+        e.preventDefault();
+        dismissDeleteBtn();
+        const data = hitStamp.stroke_data || hitStamp;
+        draggingStamp = {
+          entry: hitStamp,
+          offsetX: worldPos.x - data.x,
+          offsetY: worldPos.y - data.y,
+          startX: data.x,
+          startY: data.y,
+          moved: false
+        };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+
+      dismissDeleteBtn();
+
       if (tool === 'move' && e.button === 0) {
         e.preventDefault();
         isPanning = true;
@@ -735,10 +917,21 @@
     });
 
     canvas.addEventListener('mousemove', (e) => {
-      if (tool !== 'move') {
+      if (tool !== 'move' && !placingStamp) {
         moveBrushCursor(e.clientX, e.clientY);
       }
       sendCursorUpdate(e.clientX, e.clientY);
+
+      if (draggingStamp) {
+        const pos = screenToWorld(e.clientX, e.clientY);
+        const data = draggingStamp.entry.stroke_data || draggingStamp.entry;
+        data.x = pos.x - draggingStamp.offsetX;
+        data.y = pos.y - draggingStamp.offsetY;
+        draggingStamp.moved = true;
+        redrawAll();
+        return;
+      }
+
       if (isPanning) {
         offsetX = panStartOffsetX + (e.clientX - panStartX);
         offsetY = panStartOffsetY + (e.clientY - panStartY);
@@ -749,6 +942,16 @@
     });
 
     canvas.addEventListener('mouseup', (e) => {
+      if (draggingStamp) {
+        if (draggingStamp.moved) {
+          updateStamp(draggingStamp.entry);
+        } else {
+          showDeleteBtn(draggingStamp.entry);
+        }
+        draggingStamp = null;
+        canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
+        return;
+      }
       if (isPanning) {
         isPanning = false;
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
@@ -759,6 +962,12 @@
 
     canvas.addEventListener('mouseleave', (e) => {
       brushCursor.style.display = 'none';
+      if (draggingStamp) {
+        if (draggingStamp.moved) updateStamp(draggingStamp.entry);
+        draggingStamp = null;
+        canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
+        return;
+      }
       if (isPanning) {
         isPanning = false;
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
@@ -783,11 +992,25 @@
         const zoomFactor = 1.01;
         const newScale = scale * Math.pow(zoomFactor, -e.deltaY);
         zoomAtPoint(e.clientX, e.clientY, newScale);
-      } else {
-        offsetX -= e.deltaX;
-        offsetY -= e.deltaY;
-        redrawAll();
+        return;
       }
+
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      const hitStamp = hitTestStamp(worldPos.x, worldPos.y);
+      if (hitStamp) {
+        const data = hitStamp.stroke_data || hitStamp;
+        const delta = e.deltaY > 0 ? -4 : 4;
+        data.size = Math.max(16, Math.min(200, data.size + delta));
+        redrawAll();
+        dismissDeleteBtn();
+        if (resizeDebounceTimer) clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => updateStamp(hitStamp), 300);
+        return;
+      }
+
+      offsetX -= e.deltaX;
+      offsetY -= e.deltaY;
+      redrawAll();
     }, { passive: false });
 
     canvas.addEventListener('dblclick', (e) => {
@@ -801,6 +1024,38 @@
 
     canvas.addEventListener('touchstart', (e) => {
       if (e.target.closest('.toolbar')) return;
+
+      if (placingStamp && e.touches.length === 1) {
+        e.preventDefault();
+        const pos = screenToWorld(e.touches[0].clientX, e.touches[0].clientY);
+        const stampData = { type: 'stamp', emoji: '😊', x: pos.x, y: pos.y, size: 48 };
+        placingStamp = false;
+        document.getElementById('btn-stamp-smiley').classList.remove('active');
+        saveStroke(stampData).then(saved => {
+          if (saved) {
+            strokes.push({ id: saved.id, stroke_data: stampData });
+            redoStack = [];
+            redrawAll();
+            showStatus('Scroll over emoji to resize');
+          }
+        });
+        return;
+      }
+
+      if (e.touches.length === 2) {
+        const mid = getPinchMid(e.touches[0], e.touches[1]);
+        const worldMid = screenToWorld(mid.x, mid.y);
+        const hitStamp = hitTestStamp(worldMid.x, worldMid.y);
+        if (hitStamp) {
+          e.preventDefault();
+          stampPinchEntry = hitStamp;
+          stampPinchStartSize = (hitStamp.stroke_data || hitStamp).size;
+          stampPinchStartDist = getPinchDist(e.touches[0], e.touches[1]);
+          if (draggingStamp) draggingStamp = null;
+          dismissDeleteBtn();
+          return;
+        }
+      }
 
       if (tool === 'move') {
         e.preventDefault();
@@ -820,8 +1075,30 @@
         return;
       }
 
-      // Drawing mode
       if (e.touches.length === 1) {
+        const worldPos = screenToWorld(e.touches[0].clientX, e.touches[0].clientY);
+        const hitStamp = hitTestStamp(worldPos.x, worldPos.y);
+        if (hitStamp) {
+          e.preventDefault();
+          const data = hitStamp.stroke_data || hitStamp;
+          draggingStamp = {
+            entry: hitStamp,
+            offsetX: worldPos.x - data.x,
+            offsetY: worldPos.y - data.y,
+            startX: data.x,
+            startY: data.y,
+            moved: false
+          };
+          dismissDeleteBtn();
+          longPressTimer = setTimeout(() => {
+            if (draggingStamp && !draggingStamp.moved) {
+              showDeleteBtn(draggingStamp.entry);
+              draggingStamp = null;
+            }
+          }, 600);
+          return;
+        }
+
         updateBrushCursor();
         showBrushCursor(true);
         moveBrushCursor(e.touches[0].clientX, e.touches[0].clientY);
@@ -830,6 +1107,28 @@
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
+      if (stampPinchEntry && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = getPinchDist(e.touches[0], e.touches[1]);
+        const ratio = dist / stampPinchStartDist;
+        const data = stampPinchEntry.stroke_data || stampPinchEntry;
+        data.size = Math.max(16, Math.min(200, Math.round(stampPinchStartSize * ratio)));
+        redrawAll();
+        return;
+      }
+
+      if (draggingStamp && e.touches.length === 1) {
+        e.preventDefault();
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        const pos = screenToWorld(e.touches[0].clientX, e.touches[0].clientY);
+        const data = draggingStamp.entry.stroke_data || draggingStamp.entry;
+        data.x = pos.x - draggingStamp.offsetX;
+        data.y = pos.y - draggingStamp.offsetY;
+        draggingStamp.moved = true;
+        redrawAll();
+        return;
+      }
+
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1 && isPanning) {
@@ -869,6 +1168,21 @@
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (stampPinchEntry) {
+        updateStamp(stampPinchEntry);
+        stampPinchEntry = null;
+        return;
+      }
+      if (draggingStamp) {
+        if (draggingStamp.moved) {
+          updateStamp(draggingStamp.entry);
+        } else {
+          showDeleteBtn(draggingStamp.entry);
+        }
+        draggingStamp = null;
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
@@ -878,6 +1192,17 @@
     }, { passive: false });
 
     canvas.addEventListener('touchcancel', (e) => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (stampPinchEntry) {
+        updateStamp(stampPinchEntry);
+        stampPinchEntry = null;
+        return;
+      }
+      if (draggingStamp) {
+        if (draggingStamp.moved) updateStamp(draggingStamp.entry);
+        draggingStamp = null;
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
@@ -988,6 +1313,14 @@
         e.preventDefault();
         resetView();
       }
+      if (e.key === 'Escape') {
+        if (placingStamp) {
+          placingStamp = false;
+          document.getElementById('btn-stamp-smiley').classList.remove('active');
+          showBrushCursor(false);
+        }
+        dismissDeleteBtn();
+      }
       if (e.key === ' ' && !e.repeat && previousTool === null) {
         e.preventDefault();
         previousTool = tool;
@@ -999,6 +1332,18 @@
       if (e.key === ' ' && previousTool !== null) {
         setActiveTool(previousTool);
         previousTool = null;
+      }
+    });
+
+    document.getElementById('btn-stamp-smiley').addEventListener('click', () => {
+      dismissDeleteBtn();
+      placingStamp = !placingStamp;
+      document.getElementById('btn-stamp-smiley').classList.toggle('active', placingStamp);
+      if (placingStamp) {
+        canvas.style.cursor = 'crosshair';
+        brushCursor.style.display = 'none';
+      } else {
+        showBrushCursor(false);
       }
     });
 
@@ -1069,8 +1414,22 @@
           const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
           strokes.push({ id: data.id, stroke_data: strokeData });
           ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-          drawStroke(strokeData);
+          if (strokeData.type === 'stamp') {
+            drawStamp(strokeData);
+          } else {
+            drawStroke(strokeData);
+          }
           ctx.setTransform(1, 0, 0, 1, 0, 0);
+        }
+      });
+
+      es.addEventListener('update', (e) => {
+        const data = JSON.parse(e.data);
+        const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
+        const entry = strokes.find(s => s.id === data.id);
+        if (entry) {
+          entry.stroke_data = strokeData;
+          redrawAll();
         }
       });
 
