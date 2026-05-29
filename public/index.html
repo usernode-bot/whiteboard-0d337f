@@ -76,6 +76,7 @@
   <title>Whiteboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
@@ -172,6 +173,12 @@
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
+    <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </button>
+
+    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
     <button id="btn-theme" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Toggle dark mode">
       <!-- Moon: shown in light mode, hidden in dark mode -->
       <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -186,6 +193,24 @@
 
   <div id="status-indicator" class="fixed bottom-4 right-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 opacity-0 pointer-events-none shadow transition-opacity duration-300">
     Saved
+  </div>
+
+  <div id="export-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
+      <p class="text-zinc-800 dark:text-zinc-100 text-sm font-medium mb-4">Export PDF — choose background</p>
+      <div class="flex gap-2 justify-center mb-4 flex-wrap">
+        <button id="export-light" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+          <span class="w-4 h-4 rounded border border-zinc-300 bg-white inline-block flex-shrink-0"></span>Light
+        </button>
+        <button id="export-dark-bg" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+          <span class="w-4 h-4 rounded border border-zinc-600 inline-block flex-shrink-0" style="background:#18181b"></span>Dark
+        </button>
+        <button id="export-transparent" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
+          <span class="w-4 h-4 rounded border border-zinc-300 dark:border-zinc-600 inline-block flex-shrink-0" style="background:repeating-conic-gradient(#d4d4d8 0% 25%,#ffffff 0% 50%) 0/8px 8px"></span>Transparent
+        </button>
+      </div>
+      <button id="export-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+    </div>
   </div>
 
   <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
@@ -898,6 +923,52 @@
         setTimeout(connectSSE, 3000);
       };
     }
+
+    // --- PDF export ---
+
+    function exportToPdf(bgColor) {
+      // Composite the existing canvas (transparent strokes) over chosen background
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const exportCtx = exportCanvas.getContext('2d');
+
+      if (bgColor !== null) {
+        exportCtx.fillStyle = bgColor;
+        exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+      }
+      exportCtx.drawImage(canvas, 0, 0);
+
+      const dataUrl = exportCanvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const w = exportCanvas.width;
+      const h = exportCanvas.height;
+      const orientation = w >= h ? 'landscape' : 'portrait';
+      // Convert px to pt (96 dpi screen → 72 pt/inch)
+      const wPt = w * 72 / 96;
+      const hPt = h * 72 / 96;
+      const pdf = new jsPDF({ orientation, unit: 'pt', format: [wPt, hPt] });
+      pdf.addImage(dataUrl, 'PNG', 0, 0, wPt, hPt);
+      pdf.save('whiteboard.pdf');
+    }
+
+    function openExportModal() {
+      const modal = document.getElementById('export-modal');
+      modal.style.display = 'flex';
+      modal.classList.remove('hidden');
+    }
+
+    function closeExportModal() {
+      const modal = document.getElementById('export-modal');
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    }
+
+    document.getElementById('btn-export').addEventListener('click', openExportModal);
+    document.getElementById('export-cancel').addEventListener('click', closeExportModal);
+    document.getElementById('export-light').addEventListener('click', () => { closeExportModal(); exportToPdf('#ffffff'); });
+    document.getElementById('export-dark-bg').addEventListener('click', () => { closeExportModal(); exportToPdf('#18181b'); });
+    document.getElementById('export-transparent').addEventListener('click', () => { closeExportModal(); exportToPdf(null); });
 
     window.addEventListener('resize', resize);
     resize();
