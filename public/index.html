@@ -540,18 +540,19 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
-      // Emoji tool: don't start a stroke on mousedown; placement happens on click
+      // Emoji tool: don't start a stroke on mousedown; placement happens on pointerup
       if (tool === 'emoji') {
         return;
       }
       startDraw(e);
     });
 
-    // Emoji tool: place on click (more reliable than mousedown, esp. on mobile)
-    canvas.addEventListener('click', (e) => {
-      if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker')) return;
+    // Emoji tool: place on pointerup so it works for both mouse clicks and
+    // touch taps. Synthetic `click` events are unreliable on mobile when
+    // touch-action is none, so we use the unified pointer event instead.
+    canvas.addEventListener('pointerup', (e) => {
       if (tool !== 'emoji') return;
-      e.preventDefault();
+      if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker')) return;
       placeEmoji(e);
     });
 
@@ -644,7 +645,7 @@
         return;
       }
 
-      // Emoji tool: don't start a stroke; let the synthetic click place the emoji
+      // Emoji tool: don't start a stroke; the pointerup handler places the emoji
       if (tool === 'emoji') {
         return;
       }
