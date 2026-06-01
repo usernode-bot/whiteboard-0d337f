@@ -540,13 +540,19 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
-      // Emoji tool: single-click placement
-      if (tool === 'emoji' && e.button === 0) {
-        e.preventDefault();
-        placeEmoji(e);
+      // Emoji tool: don't start a stroke on mousedown; placement happens on click
+      if (tool === 'emoji') {
         return;
       }
       startDraw(e);
+    });
+
+    // Emoji tool: place on click (more reliable than mousedown, esp. on mobile)
+    canvas.addEventListener('click', (e) => {
+      if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker')) return;
+      if (tool !== 'emoji') return;
+      e.preventDefault();
+      placeEmoji(e);
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -638,12 +644,8 @@
         return;
       }
 
-      // Emoji tool: single-tap placement
+      // Emoji tool: don't start a stroke; let the synthetic click place the emoji
       if (tool === 'emoji') {
-        if (e.touches.length === 1) {
-          e.preventDefault();
-          placeEmoji(e);
-        }
         return;
       }
 
