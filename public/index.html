@@ -121,7 +121,7 @@
 <body class="bg-white">
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
-  <input type="text" id="text-input" autocomplete="off" spellcheck="false">
+  <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
 
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 border border-zinc-300 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
@@ -433,7 +433,7 @@
 
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
-      if (tool === 'move') return;
+      if (tool === 'move' || tool === 'text') return;
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
