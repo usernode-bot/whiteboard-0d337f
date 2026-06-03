@@ -199,6 +199,7 @@
     let panStartOffsetY = 0;
 
     // Pinch-to-zoom tracking (mobile)
+    let isPinching = false;
     let lastPinchDist = 0;
     let lastPinchMidX = 0;
     let lastPinchMidY = 0;
@@ -518,9 +519,23 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
-        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse)
-        const zoomFactor = 1.01;
-        const newScale = scale * Math.pow(zoomFactor, -e.deltaY);
+        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse).
+        // Normalize deltaY across deltaMode and input device:
+        //   deltaMode=1 (line, Firefox mouse wheel): deltaY≈3 → convert to pixels
+        //   deltaMode=0, |deltaY|>50 (discrete mouse wheel click): use fixed step
+        //   deltaMode=0, |deltaY|≤50 (trackpad): continuous formula works well
+        let dy = e.deltaY;
+        let newScale;
+        if (e.deltaMode === 1) {
+          // Line mode — Firefox mouse wheel: each notch is deltaY≈3 lines
+          newScale = scale * Math.pow(1.15, -Math.sign(dy));
+        } else if (Math.abs(dy) > 50) {
+          // Pixel mode, large delta — discrete mouse wheel click
+          newScale = scale * Math.pow(1.15, -Math.sign(dy));
+        } else {
+          // Pixel mode, small delta — trackpad continuous gesture
+          newScale = scale * Math.pow(1.01, -dy);
+        }
         zoomAtPoint(e.clientX, e.clientY, newScale);
       } else {
         // Two-finger scroll / trackpad pan / regular mouse wheel
@@ -543,6 +558,20 @@
     canvas.addEventListener('touchstart', (e) => {
       if (e.target.closest('.toolbar')) return;
 
+      // Two-finger gesture: enter pinch-to-zoom regardless of active tool
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        isPanning = false;
+        isPinching = true;
+        endDraw(e);
+        showBrushCursor(false);
+        lastPinchDist = getPinchDist(e.touches[0], e.touches[1]);
+        const mid = getPinchMid(e.touches[0], e.touches[1]);
+        lastPinchMidX = mid.x;
+        lastPinchMidY = mid.y;
+        return;
+      }
+
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1) {
@@ -551,17 +580,11 @@
           panStartY = e.touches[0].clientY;
           panStartOffsetX = offsetX;
           panStartOffsetY = offsetY;
-        } else if (e.touches.length === 2) {
-          isPanning = false;
-          lastPinchDist = getPinchDist(e.touches[0], e.touches[1]);
-          const mid = getPinchMid(e.touches[0], e.touches[1]);
-          lastPinchMidX = mid.x;
-          lastPinchMidY = mid.y;
         }
         return;
       }
 
-      // Drawing mode
+      // Drawing mode (single touch)
       if (e.touches.length === 1) {
         updateBrushCursor();
         showBrushCursor(true);
@@ -571,13 +594,10 @@
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
-      if (tool === 'move') {
+      // Pinch-to-zoom: runs for all tool modes
+      if (isPinching) {
         e.preventDefault();
-        if (e.touches.length === 1 && isPanning) {
-          offsetX = panStartOffsetX + (e.touches[0].clientX - panStartX);
-          offsetY = panStartOffsetY + (e.touches[0].clientY - panStartY);
-          redrawAll();
-        } else if (e.touches.length === 2) {
+        if (e.touches.length === 2) {
           const dist = getPinchDist(e.touches[0], e.touches[1]);
           const mid = getPinchMid(e.touches[0], e.touches[1]);
 
@@ -598,6 +618,17 @@
           lastPinchMidY = mid.y;
 
           updateZoomIndicator();
+          updateBrushCursor();
+          redrawAll();
+        }
+        return;
+      }
+
+      if (tool === 'move') {
+        e.preventDefault();
+        if (e.touches.length === 1 && isPanning) {
+          offsetX = panStartOffsetX + (e.touches[0].clientX - panStartX);
+          offsetY = panStartOffsetY + (e.touches[0].clientY - panStartY);
           redrawAll();
         }
         return;
@@ -611,6 +642,12 @@
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
+      if (isPinching && e.touches.length < 2) {
+        isPinching = false;
+        isPanning = false;
+        showBrushCursor(false);
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
@@ -620,6 +657,12 @@
     }, { passive: false });
 
     canvas.addEventListener('touchcancel', (e) => {
+      if (isPinching) {
+        isPinching = false;
+        isPanning = false;
+        showBrushCursor(false);
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
