@@ -322,9 +322,14 @@
     let panStartOffsetY = 0;
 
     // Pinch-to-zoom tracking (mobile)
+    let isPinching = false;
     let lastPinchDist = 0;
     let lastPinchMidX = 0;
     let lastPinchMidY = 0;
+    let lastPinchAngle = 0;
+
+    // Rotation state (viewport only, not persisted)
+    let rotation = 0;
 
     // Spacebar-hold for temporary move mode
     let previousTool = null;
@@ -411,9 +416,10 @@
     }
 
     function redrawAll() {
+      const cos = Math.cos(rotation), sin = Math.sin(rotation);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
       for (const s of strokes) {
         drawItem(s.stroke_data || s);
       }
@@ -475,7 +481,12 @@
     }
 
     function screenToWorld(sx, sy) {
-      return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
+      const dx = sx - offsetX, dy = sy - offsetY;
+      const cos = Math.cos(rotation), sin = Math.sin(rotation);
+      return {
+        x: (dx * cos + dy * sin) / scale,
+        y: (-dx * sin + dy * cos) / scale
+      };
     }
 
     function getPos(e) {
@@ -506,13 +517,14 @@
     }
 
     function resetView() {
-      if (scale === 1 && offsetX === 0 && offsetY === 0) {
+      if (scale === 1 && offsetX === 0 && offsetY === 0 && rotation === 0) {
         showStatus('View already at default');
         return;
       }
       scale = 1;
       offsetX = 0;
       offsetY = 0;
+      rotation = 0;
       updateBrushCursor();
       updateZoomIndicator();
       redrawAll();
@@ -592,6 +604,10 @@
       return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
     }
 
+    function getPinchAngle(t1, t2) {
+      return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+    }
+
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
       if (tool === 'move' || tool === 'text') return;
@@ -613,7 +629,8 @@
       const pos = getPos(e);
       currentStroke.points.push(pos);
 
-      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      const cos = Math.cos(rotation), sin = Math.sin(rotation);
+      ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
       ctx.beginPath();
       const pts = currentStroke.points;
       if (pts.length >= 2) {
@@ -757,9 +774,23 @@
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
-        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse)
-        const zoomFactor = 1.01;
-        const newScale = scale * Math.pow(zoomFactor, -e.deltaY);
+        // Pinch-to-zoom gesture (trackpad) or Ctrl+scroll (mouse).
+        // Normalize deltaY across deltaMode and input device:
+        //   deltaMode=1 (line, Firefox mouse wheel): deltaY≈3 → convert to pixels
+        //   deltaMode=0, |deltaY|>50 (discrete mouse wheel click): use fixed step
+        //   deltaMode=0, |deltaY|≤50 (trackpad): continuous formula works well
+        let dy = e.deltaY;
+        let newScale;
+        if (e.deltaMode === 1) {
+          // Line mode — Firefox mouse wheel: each notch is deltaY≈3 lines
+          newScale = scale * Math.pow(1.15, -Math.sign(dy));
+        } else if (Math.abs(dy) > 50) {
+          // Pixel mode, large delta — discrete mouse wheel click
+          newScale = scale * Math.pow(1.15, -Math.sign(dy));
+        } else {
+          // Pixel mode, small delta — trackpad continuous gesture
+          newScale = scale * Math.pow(1.01, -dy);
+        }
         zoomAtPoint(e.clientX, e.clientY, newScale);
       } else {
         // Two-finger scroll / trackpad pan / regular mouse wheel
@@ -782,6 +813,21 @@
     canvas.addEventListener('touchstart', (e) => {
       if (e.target.closest('.toolbar')) return;
 
+      // Two-finger gesture: enter pinch-to-zoom regardless of active tool
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        isPanning = false;
+        isPinching = true;
+        endDraw(e);
+        showBrushCursor(false);
+        lastPinchDist = getPinchDist(e.touches[0], e.touches[1]);
+        lastPinchAngle = getPinchAngle(e.touches[0], e.touches[1]);
+        const mid = getPinchMid(e.touches[0], e.touches[1]);
+        lastPinchMidX = mid.x;
+        lastPinchMidY = mid.y;
+        return;
+      }
+
       if (tool === 'text') {
         e.preventDefault();
         if (e.touches.length === 1) {
@@ -802,12 +848,6 @@
           panStartY = e.touches[0].clientY;
           panStartOffsetX = offsetX;
           panStartOffsetY = offsetY;
-        } else if (e.touches.length === 2) {
-          isPanning = false;
-          lastPinchDist = getPinchDist(e.touches[0], e.touches[1]);
-          const mid = getPinchMid(e.touches[0], e.touches[1]);
-          lastPinchMidX = mid.x;
-          lastPinchMidY = mid.y;
         }
         return;
       }
@@ -817,7 +857,7 @@
         return;
       }
 
-      // Drawing mode
+      // Drawing mode (single touch)
       if (e.touches.length === 1) {
         updateBrushCursor();
         showBrushCursor(true);
@@ -827,33 +867,43 @@
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
+      // Pinch-to-zoom: runs for all tool modes
+      if (isPinching) {
+        e.preventDefault();
+        if (e.touches.length === 2) {
+          const dist = getPinchDist(e.touches[0], e.touches[1]);
+          const mid = getPinchMid(e.touches[0], e.touches[1]);
+          const angle = getPinchAngle(e.touches[0], e.touches[1]);
+
+          // Compute world point under the old midpoint (anchor stays fixed)
+          const anchor = screenToWorld(lastPinchMidX, lastPinchMidY);
+
+          // Apply scale and rotation deltas
+          scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * (dist / lastPinchDist)));
+          rotation += angle - lastPinchAngle;
+
+          // Recompute offsets so anchor maps back to new midpoint
+          const cos = Math.cos(rotation), sin = Math.sin(rotation);
+          offsetX = mid.x - scale * (cos * anchor.x - sin * anchor.y);
+          offsetY = mid.y - scale * (sin * anchor.x + cos * anchor.y);
+
+          lastPinchDist = dist;
+          lastPinchMidX = mid.x;
+          lastPinchMidY = mid.y;
+          lastPinchAngle = angle;
+
+          updateZoomIndicator();
+          updateBrushCursor();
+          redrawAll();
+        }
+        return;
+      }
+
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1 && isPanning) {
           offsetX = panStartOffsetX + (e.touches[0].clientX - panStartX);
           offsetY = panStartOffsetY + (e.touches[0].clientY - panStartY);
-          redrawAll();
-        } else if (e.touches.length === 2) {
-          const dist = getPinchDist(e.touches[0], e.touches[1]);
-          const mid = getPinchMid(e.touches[0], e.touches[1]);
-
-          // Zoom
-          let newScale = scale * (dist / lastPinchDist);
-          newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-          const ratio = newScale / scale;
-          offsetX = mid.x - (mid.x - offsetX) * ratio;
-          offsetY = mid.y - (mid.y - offsetY) * ratio;
-          scale = newScale;
-
-          // Pan (midpoint delta)
-          offsetX += mid.x - lastPinchMidX;
-          offsetY += mid.y - lastPinchMidY;
-
-          lastPinchDist = dist;
-          lastPinchMidX = mid.x;
-          lastPinchMidY = mid.y;
-
-          updateZoomIndicator();
           redrawAll();
         }
         return;
@@ -867,6 +917,12 @@
     }, { passive: false });
 
     canvas.addEventListener('touchend', (e) => {
+      if (isPinching && e.touches.length < 2) {
+        isPinching = false;
+        isPanning = false;
+        showBrushCursor(false);
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
@@ -876,6 +932,12 @@
     }, { passive: false });
 
     canvas.addEventListener('touchcancel', (e) => {
+      if (isPinching) {
+        isPinching = false;
+        isPanning = false;
+        showBrushCursor(false);
+        return;
+      }
       if (tool === 'move') {
         isPanning = false;
         return;
