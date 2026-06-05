@@ -1012,22 +1012,35 @@
       const btnColor = document.getElementById('btn-color');
       const colorPopover = document.getElementById('color-popover');
 
-      btnColor.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isHidden = colorPopover.classList.contains('hidden');
-        document.getElementById('bg-popover').classList.add('hidden');
-        if (isHidden) {
-          const rect = btnColor.getBoundingClientRect();
-          colorPopover.style.top = (rect.bottom + 8) + 'px';
-          const left = Math.min(rect.left, window.innerWidth - 184);
-          colorPopover.style.left = Math.max(4, left) + 'px';
-          colorPopover.classList.remove('hidden');
+      function openColorPopover() {
+        const rect = btnColor.getBoundingClientRect();
+        colorPopover.style.top = (rect.bottom + 8) + 'px';
+        const left = Math.min(rect.left, window.innerWidth - 184);
+        colorPopover.style.left = Math.max(4, left) + 'px';
+        colorPopover.classList.remove('hidden');
+      }
+
+      function closeColorPopover() {
+        colorPopover.classList.add('hidden');
+      }
+
+      btnColor.addEventListener('click', () => {
+        if (colorPopover.classList.contains('hidden')) {
+          document.getElementById('bg-popover').classList.add('hidden');
+          openColorPopover();
         } else {
-          colorPopover.classList.add('hidden');
+          closeColorPopover();
         }
       });
 
-      colorPopover.addEventListener('click', (e) => e.stopPropagation());
+      // Close on outside mousedown — fires before click, no stopPropagation needed
+      document.addEventListener('mousedown', (e) => {
+        if (!colorPopover.classList.contains('hidden') &&
+            !colorPopover.contains(e.target) &&
+            !btnColor.contains(e.target)) {
+          closeColorPopover();
+        }
+      });
 
       document.getElementById('color-custom-stroke').addEventListener('input', (e) => {
         setStrokeColor(e.target.value);
@@ -1209,7 +1222,6 @@
       popover.addEventListener('click', (e) => e.stopPropagation());
       document.addEventListener('click', () => {
         popover.classList.add('hidden');
-        document.getElementById('color-popover').classList.add('hidden');
       });
 
       document.getElementById('bg-custom').addEventListener('input', (e) => {
