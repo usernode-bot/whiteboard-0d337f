@@ -165,6 +165,9 @@
     <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
     </button>
+    <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+    </button>
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
@@ -225,6 +228,10 @@
       <!-- Sun: shown in dark mode, hidden in light mode -->
       <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
+  </div>
+
+  <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
+    <div class="grid grid-cols-8 gap-1"></div>
   </div>
 
   <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
@@ -327,6 +334,16 @@
     // Spacebar-hold for temporary move mode
     let previousTool = null;
 
+    // Emoji tool
+    const EMOJI_SIZE = 32;
+    let selectedEmoji = '😀';
+    const EMOJI_LIST = [
+      '😀', '😂', '😍', '😎', '🤔', '😭', '😡', '🥳',
+      '👍', '👎', '👏', '🙏', '💪', '🤝', '👀', '🔥',
+      '❤️', '💔', '⭐', '✨', '🎉', '🎈', '💯', '✅',
+      '❌', '❓', '💡', '🚀', '🐶', '🐱', '🌈', '☀️'
+    ];
+
     // Text tool state
     let pendingTextX = 0;
     let pendingTextY = 0;
@@ -404,9 +421,25 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
       for (const s of strokes) {
-        drawStroke(s.stroke_data || s);
+        drawItem(s.stroke_data || s);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    function drawItem(item) {
+      if (item.type === 'emoji') {
+        drawEmoji(item);
+      } else {
+        drawStroke(item);
+      }
+    }
+
+    function drawEmoji(item) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.font = item.size + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.emoji, item.x, item.y);
     }
 
     function drawStroke(s) {
@@ -509,10 +542,16 @@
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-text').classList.toggle('active', newTool === 'text');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
+      document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
+      if (newTool !== 'emoji') hideEmojiPicker();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
+      } else if (newTool === 'emoji') {
+        canvas.classList.remove('panning');
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'crosshair';
       } else if (newTool === 'text') {
         canvas.style.cursor = 'text';
         brushCursor.style.display = 'none';
@@ -521,6 +560,38 @@
         canvas.classList.remove('panning');
         updateBrushCursor();
       }
+    }
+
+    const emojiPicker = document.getElementById('emoji-picker');
+    function buildEmojiPicker() {
+      const grid = emojiPicker.querySelector('.grid');
+      for (const emoji of EMOJI_LIST) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = emoji;
+        b.className = 'w-9 h-9 rounded-lg flex items-center justify-center text-xl hover:bg-zinc-100';
+        b.addEventListener('click', () => {
+          selectedEmoji = emoji;
+          hideEmojiPicker();
+        });
+        grid.appendChild(b);
+      }
+    }
+    function showEmojiPicker() { emojiPicker.classList.remove('hidden'); }
+    function hideEmojiPicker() { emojiPicker.classList.add('hidden'); }
+    function toggleEmojiPicker() { emojiPicker.classList.toggle('hidden'); }
+
+    function placeEmoji(e) {
+      const pos = getPos(e);
+      const item = { type: 'emoji', emoji: selectedEmoji, x: pos.x, y: pos.y, size: EMOJI_SIZE };
+      saveStroke(item).then((saved) => {
+        if (saved) {
+          strokes.push({ id: saved.id, stroke_data: item });
+          redoStack = [];
+          redrawAll();
+        }
+      });
+      setActiveTool('pen');
     }
 
     function getPinchDist(t1, t2) {
@@ -631,6 +702,10 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
+      // Emoji tool: don't start a stroke on mousedown; placement happens on pointerup
+      if (tool === 'emoji') {
+        return;
+      }
       // Left click in text mode: place text input
       if (tool === 'text' && e.button === 0) {
         e.preventDefault();
@@ -642,6 +717,15 @@
         return;
       }
       startDraw(e);
+    });
+
+    // Emoji tool: place on pointerup so it works for both mouse clicks and
+    // touch taps. Synthetic `click` events are unreliable on mobile when
+    // touch-action is none, so we use the unified pointer event instead.
+    canvas.addEventListener('pointerup', (e) => {
+      if (tool !== 'emoji') return;
+      if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker')) return;
+      placeEmoji(e);
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -768,6 +852,11 @@
         return;
       }
 
+      // Emoji tool: don't start a stroke; the pointerup handler places the emoji
+      if (tool === 'emoji') {
+        return;
+      }
+
       // Drawing mode (single touch)
       if (e.touches.length === 1) {
         updateBrushCursor();
@@ -868,6 +957,15 @@
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+    document.getElementById('btn-emoji').addEventListener('click', () => {
+      if (tool === 'emoji') {
+        toggleEmojiPicker();
+      } else {
+        setActiveTool('emoji');
+        showEmojiPicker();
+      }
+    });
+    buildEmojiPicker();
 
     document.getElementById('color-picker').addEventListener('input', (e) => {
       strokeColor = e.target.value;
@@ -1181,7 +1279,7 @@
           const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
           strokes.push({ id: data.id, stroke_data: strokeData });
           ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-          drawStroke(strokeData);
+          drawItem(strokeData);
           ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
       });
