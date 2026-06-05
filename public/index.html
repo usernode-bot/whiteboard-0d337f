@@ -171,19 +171,9 @@
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
-    <div class="relative">
-      <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
-        <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
-      </button>
-      <div id="color-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
-        <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
-        <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
-          <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
-          Custom
-        </label>
-      </div>
-    </div>
+    <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
+      <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
+    </button>
 
     <div class="flex items-center gap-1">
       <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
@@ -240,6 +230,15 @@
       <!-- Sun: shown in dark mode, hidden in light mode -->
       <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
+  </div>
+
+  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
+    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+    <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+      <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
+      Custom
+    </label>
   </div>
 
   <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
@@ -1015,8 +1014,17 @@
 
       btnColor.addEventListener('click', (e) => {
         e.stopPropagation();
-        colorPopover.classList.toggle('hidden');
+        const isHidden = colorPopover.classList.contains('hidden');
         document.getElementById('bg-popover').classList.add('hidden');
+        if (isHidden) {
+          const rect = btnColor.getBoundingClientRect();
+          colorPopover.style.top = (rect.bottom + 8) + 'px';
+          const left = Math.min(rect.left, window.innerWidth - 184);
+          colorPopover.style.left = Math.max(4, left) + 'px';
+          colorPopover.classList.remove('hidden');
+        } else {
+          colorPopover.classList.add('hidden');
+        }
       });
 
       colorPopover.addEventListener('click', (e) => e.stopPropagation());
