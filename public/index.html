@@ -135,6 +135,19 @@
       pointer-events: none;
       top: -9999px;
     }
+    @keyframes marquee {
+      from { transform: translateX(100vw); }
+      to { transform: translateX(-100%); }
+    }
+    #marquee-banner {
+      position: fixed; top: 0; left: 0; width: 100%; height: 40px;
+      z-index: 49; overflow: hidden;
+      display: flex; align-items: center;
+    }
+    #marquee-text {
+      display: inline-block; white-space: nowrap;
+      animation: marquee 12s linear infinite;
+    }
     @media (max-width: 640px) {
       .toolbar { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
@@ -144,6 +157,20 @@
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
+  <div id="marquee-banner" class="bg-white/80 dark:bg-zinc-800/80 border-b border-zinc-200 dark:border-zinc-700">
+    <span id="marquee-text" class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Welcome to Whiteboard — draw, sketch, and collaborate in real time!</span>
+  </div>
+
+  <div id="marquee-controls" class="toolbar fixed left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-3 z-50 shadow-lg" style="top: 48px;">
+    <button id="marquee-play-pause" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Pause">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    </button>
+    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600"></div>
+    <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Speed</span>
+    <input id="marquee-speed" type="range" min="1" max="5" value="3" class="w-20">
+    <span id="marquee-speed-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-8 text-center">Med</span>
+  </div>
+
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
@@ -1355,6 +1382,44 @@
     resize();
     loadStrokes();
     connectSSE();
+
+    // --- Marquee controls ---
+    (function initMarquee() {
+      const SPEED_DURATIONS = [30, 20, 12, 7, 4];
+      const SPEED_LABELS = ['Slow', 'Med–', 'Med', 'Fast', 'V.Fast'];
+      let marqueePlaying = true;
+
+      const marqueeText = document.getElementById('marquee-text');
+      const playPauseBtn = document.getElementById('marquee-play-pause');
+      const speedSlider = document.getElementById('marquee-speed');
+      const speedLabel = document.getElementById('marquee-speed-label');
+
+      const PAUSE_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+      const PLAY_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+      function applyDuration(dur) {
+        marqueeText.style.animation = 'none';
+        void marqueeText.offsetWidth;
+        marqueeText.style.animation = 'marquee ' + dur + 's linear infinite';
+        marqueeText.style.animationPlayState = marqueePlaying ? 'running' : 'paused';
+      }
+
+      // Init at medium speed (index 2 = value 3)
+      applyDuration(SPEED_DURATIONS[2]);
+
+      playPauseBtn.addEventListener('click', () => {
+        marqueePlaying = !marqueePlaying;
+        marqueeText.style.animationPlayState = marqueePlaying ? 'running' : 'paused';
+        playPauseBtn.innerHTML = marqueePlaying ? PAUSE_ICON : PLAY_ICON;
+        playPauseBtn.title = marqueePlaying ? 'Pause' : 'Play';
+      });
+
+      speedSlider.addEventListener('input', () => {
+        const idx = parseInt(speedSlider.value) - 1;
+        speedLabel.textContent = SPEED_LABELS[idx];
+        applyDuration(SPEED_DURATIONS[idx]);
+      });
+    })();
   </script>
 </body>
 </html>
