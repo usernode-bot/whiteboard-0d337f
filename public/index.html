@@ -142,6 +142,20 @@
 
     <div class="w-px h-8 bg-zinc-300 mx-1"></div>
 
+    <div class="relative">
+      <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
+      </button>
+      <div id="bg-popover" class="hidden absolute top-12 right-0 bg-white border border-zinc-300 rounded-xl p-3 shadow-lg z-[60] w-44">
+        <p class="text-xs text-zinc-500 mb-2">Background</p>
+        <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+        <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
+          <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
+          Custom
+        </label>
+      </div>
+    </div>
+
     <button id="btn-home" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Reset View (Ctrl+0)">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     </button>
@@ -750,6 +764,62 @@
     // Home button and zoom indicator click handlers
     document.getElementById('btn-home').addEventListener('click', resetView);
     document.getElementById('zoom-indicator').addEventListener('click', resetView);
+
+    // --- Background color ---
+    // Strokes are drawn onto a transparent canvas (the eraser uses
+    // destination-out), so the page background shows through. Changing the
+    // body background recolors the drawing surface without touching strokes.
+    // Stored locally — it's a personal view preference, not shared board state.
+    const BG_KEY = 'whiteboard-bg';
+    const BG_SWATCHES = [
+      '#ffffff', '#f5f5f4', '#fef3c7', '#dcfce7',
+      '#dbeafe', '#fae8ff', '#27272a', '#0f172a'
+    ];
+
+    function applyBackground(color) {
+      document.body.style.backgroundColor = color;
+      canvas.style.backgroundColor = color;
+    }
+
+    function setBackground(color) {
+      applyBackground(color);
+      try { localStorage.setItem(BG_KEY, color); } catch (_) {}
+      document.getElementById('bg-custom').value =
+        /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#ffffff';
+    }
+
+    (function initBackground() {
+      const swatchWrap = document.getElementById('bg-swatches');
+      BG_SWATCHES.forEach((color) => {
+        const sw = document.createElement('button');
+        sw.type = 'button';
+        sw.title = color;
+        sw.style.backgroundColor = color;
+        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 hover:scale-110 transition-transform';
+        sw.addEventListener('click', () => {
+          setBackground(color);
+          document.getElementById('bg-popover').classList.add('hidden');
+        });
+        swatchWrap.appendChild(sw);
+      });
+
+      const btnBg = document.getElementById('btn-bg');
+      const popover = document.getElementById('bg-popover');
+      btnBg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        popover.classList.toggle('hidden');
+      });
+      popover.addEventListener('click', (e) => e.stopPropagation());
+      document.addEventListener('click', () => popover.classList.add('hidden'));
+
+      document.getElementById('bg-custom').addEventListener('input', (e) => {
+        setBackground(e.target.value);
+      });
+
+      let saved;
+      try { saved = localStorage.getItem(BG_KEY); } catch (_) {}
+      setBackground(saved || '#ffffff');
+    })();
 
     function showStatus(text) {
       const el = document.getElementById('status-indicator');
