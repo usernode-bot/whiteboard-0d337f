@@ -148,6 +148,7 @@
   <div id="brush-cursor"></div>
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
+  <input type="file" id="image-file-input" accept="image/*" style="display:none">
 
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
@@ -161,6 +162,9 @@
     </button>
     <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    </button>
+    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Upload Image">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
     </button>
     <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
@@ -281,6 +285,7 @@
     let strokes = [];
     let redoStack = [];
     let currentStroke = null;
+    const imageCache = new Map();
     let tool = 'pen';
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
     let strokeWidth = 3;
@@ -409,6 +414,21 @@
         ctx.fillStyle = s.color;
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillText(s.text, s.x, s.y);
+        return;
+      }
+      if (s.type === 'image') {
+        const cacheKey = s.dataUrl.slice(0, 64);
+        let img = imageCache.get(cacheKey);
+        if (!img) {
+          img = new Image();
+          img.onload = () => redrawAll();
+          img.src = s.dataUrl;
+          imageCache.set(cacheKey, img);
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(img, s.x, s.y, s.width, s.height);
+        }
         return;
       }
       if (!s.points || s.points.length < 2) return;
@@ -806,6 +826,68 @@
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+
+    document.getElementById('btn-image').addEventListener('click', () => {
+      document.getElementById('image-file-input').click();
+    });
+
+    document.getElementById('image-file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = () => URL.revokeObjectURL(objectUrl);
+      img.onload = async () => {
+        URL.revokeObjectURL(objectUrl);
+
+        const MAX_PX = 600;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX_PX || h > MAX_PX) {
+          if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
+          else { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
+        }
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = w;
+        offscreen.height = h;
+        offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
+
+        const dataUrl = offscreen.toDataURL(
+          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+          0.85
+        );
+
+        const MAX_WORLD = 400;
+        let worldW = w;
+        let worldH = h;
+        if (worldW > MAX_WORLD || worldH > MAX_WORLD) {
+          if (worldW >= worldH) { worldH = Math.round(worldH * MAX_WORLD / worldW); worldW = MAX_WORLD; }
+          else { worldW = Math.round(worldW * MAX_WORLD / worldH); worldH = MAX_WORLD; }
+        }
+
+        const viewCentreX = (canvas.width / 2 - offsetX) / scale;
+        const viewCentreY = (canvas.height / 2 - offsetY) / scale;
+        const strokeData = {
+          type: 'image',
+          x: viewCentreX - worldW / 2,
+          y: viewCentreY - worldH / 2,
+          width: worldW,
+          height: worldH,
+          dataUrl
+        };
+
+        const saved = await saveStroke(strokeData);
+        if (saved) {
+          strokes.push({ id: saved.id, stroke_data: strokeData });
+          redoStack = [];
+          redrawAll();
+        }
+      };
+      img.src = objectUrl;
+    });
 
     document.getElementById('color-picker').addEventListener('input', (e) => {
       strokeColor = e.target.value;
