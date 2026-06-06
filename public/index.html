@@ -176,6 +176,24 @@
     </button>
     <input type="file" id="image-input" accept="image/*" class="hidden">
 
+    <div class="relative">
+      <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
+        <!-- icon swapped in JS to reflect the selected shape -->
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+      </button>
+      <div id="shapes-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex gap-1">
+        <button data-shape="line" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Line">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+        </button>
+        <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+        </button>
+        <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Circle / Ellipse">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+        </button>
+      </div>
+    </div>
+
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
     <div id="layer-actions" class="hidden items-center gap-1">
@@ -192,7 +210,9 @@
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
-    <input id="color-picker" type="color" value="#1c1917" class="w-9 h-9 rounded-lg bg-transparent" title="Color">
+    <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
+      <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
+    </button>
 
     <div class="flex items-center gap-1">
       <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
@@ -249,6 +269,15 @@
       <!-- Sun: shown in dark mode, hidden in light mode -->
       <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
+  </div>
+
+  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
+    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+    <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+      <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
+      Custom
+    </label>
   </div>
 
   <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
@@ -329,8 +358,24 @@
     let isDrawing = false;
     const brushCursor = document.getElementById('brush-cursor');
 
-    // Sync color picker with initial theme
-    document.getElementById('color-picker').value = strokeColor;
+    // Shape tool state. When `tool === 'shape'`, `shapeType` selects which
+    // primitive is drawn (line | rect | circle). A shape is defined by the
+    // press point (shapeStart) and the current/release point (shapeEnd).
+    let shapeType = 'line';
+    let shapeStart = null;
+    let shapeEnd = null;
+    function isShapeTool() { return tool === 'shape'; }
+
+    function setStrokeColor(hex) {
+      strokeColor = hex;
+      document.getElementById('color-dot').style.backgroundColor = hex;
+      if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        document.getElementById('color-custom-stroke').value = hex;
+      }
+    }
+
+    // Sync color dot with initial theme
+    setStrokeColor(strokeColor);
 
     // Update theme toggle icon visibility
     function syncThemeIcon() {
@@ -397,7 +442,7 @@
     }
 
     function updateBrushCursor() {
-      if (tool === 'text') {
+      if (tool === 'text' || tool === 'shape') {
         brushCursor.style.display = 'none';
         return;
       }
@@ -436,6 +481,11 @@
       if (tool === 'select') {
         brushCursor.style.display = 'none';
         canvas.style.cursor = 'default';
+        return;
+      }
+      if (tool === 'shape') {
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
@@ -487,6 +537,8 @@
         drawEmoji(item);
       } else if (item.type === 'image') {
         drawImageItem(item);
+      } else if (item.type === 'shape') {
+        drawShape(item);
       } else {
         drawStroke(item);
       }
@@ -510,6 +562,34 @@
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(img, item.x, item.y, item.w, item.h);
       }
+    }
+
+    // Render a shape primitive. `line` runs from (x0,y0) to (x1,y1); `rect`
+    // and `circle` are bounded by the drag rectangle between those points
+    // (circle is the ellipse inscribed in that box).
+    function drawShape(s) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      if (s.shape === 'rect') {
+        const x = Math.min(s.x0, s.x1);
+        const y = Math.min(s.y0, s.y1);
+        ctx.rect(x, y, Math.abs(s.x1 - s.x0), Math.abs(s.y1 - s.y0));
+      } else if (s.shape === 'circle') {
+        const cx = (s.x0 + s.x1) / 2;
+        const cy = (s.y0 + s.y1) / 2;
+        const rx = Math.abs(s.x1 - s.x0) / 2;
+        const ry = Math.abs(s.y1 - s.y0) / 2;
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else {
+        // line (default)
+        ctx.moveTo(s.x0, s.y0);
+        ctx.lineTo(s.x1, s.y1);
+      }
+      ctx.stroke();
     }
 
     function drawEmoji(item) {
@@ -874,7 +954,9 @@
       document.getElementById('btn-select').classList.toggle('active', newTool === 'select');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
+      document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
       if (newTool !== 'emoji') hideEmojiPicker();
+      if (newTool !== 'shape') hideShapesPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
@@ -891,6 +973,10 @@
         canvas.style.cursor = 'text';
         brushCursor.style.display = 'none';
         canvas.classList.remove('panning');
+      } else if (newTool === 'shape') {
+        canvas.classList.remove('panning');
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'crosshair';
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
@@ -952,6 +1038,12 @@
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
+      if (isShapeTool()) {
+        shapeStart = pos;
+        shapeEnd = pos;
+        currentStroke = null;
+        return;
+      }
       currentStroke = {
         points: [pos],
         color: strokeColor,
@@ -961,8 +1053,33 @@
       };
     }
 
+    // Re-render the live shape preview on top of the committed strokes while
+    // the user drags. redrawAll() has already cleared and repainted the board.
+    function drawShapePreview() {
+      if (!shapeStart || !shapeEnd) return;
+      const cos = Math.cos(rotation), sin = Math.sin(rotation);
+      ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
+      drawShape({
+        shape: shapeType,
+        x0: shapeStart.x, y0: shapeStart.y,
+        x1: shapeEnd.x, y1: shapeEnd.y,
+        color: strokeColor,
+        width: strokeWidth
+      });
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
     function moveDraw(e) {
-      if (!isDrawing || !currentStroke) return;
+      if (!isDrawing) return;
+      if (isShapeTool()) {
+        if (!shapeStart) return;
+        e.preventDefault();
+        shapeEnd = getPos(e);
+        redrawAll();
+        drawShapePreview();
+        return;
+      }
+      if (!currentStroke) return;
       e.preventDefault();
       const pos = getPos(e);
       currentStroke.points.push(pos);
@@ -994,7 +1111,36 @@
     }
 
     async function endDraw(e) {
-      if (!isDrawing || !currentStroke) return;
+      if (!isDrawing) return;
+      if (isShapeTool()) {
+        e.preventDefault();
+        isDrawing = false;
+        if (shapeStart && shapeEnd) {
+          const dx = shapeEnd.x - shapeStart.x;
+          const dy = shapeEnd.y - shapeStart.y;
+          // Ignore a click with no drag (zero-size shape).
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+            const strokeData = {
+              type: 'shape',
+              shape: shapeType,
+              x0: shapeStart.x, y0: shapeStart.y,
+              x1: shapeEnd.x, y1: shapeEnd.y,
+              color: strokeColor,
+              width: strokeWidth
+            };
+            const saved = await saveStroke(strokeData);
+            if (saved) {
+              strokes.push({ id: saved.id, stroke_data: strokeData });
+              redoStack = [];
+            }
+          }
+        }
+        shapeStart = null;
+        shapeEnd = null;
+        redrawAll();
+        return;
+      }
+      if (!currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
         const strokeData = {
@@ -1414,10 +1560,108 @@
     });
     buildEmojiPicker();
 
-    document.getElementById('color-picker').addEventListener('input', (e) => {
-      strokeColor = e.target.value;
-      setActiveTool('pen');
+    // --- Shapes tool wiring ---
+    const shapesPopover = document.getElementById('shapes-popover');
+    const btnShapes = document.getElementById('btn-shapes');
+    const SHAPE_ICONS = {
+      line: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>',
+      rect: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>',
+      circle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>'
+    };
+    function hideShapesPopover() { shapesPopover.classList.add('hidden'); }
+    function setShapeIcon() {
+      btnShapes.innerHTML = SHAPE_ICONS[shapeType] || SHAPE_ICONS.line;
+    }
+    function markActiveShapeOption() {
+      shapesPopover.querySelectorAll('.shape-opt').forEach((b) => {
+        b.classList.toggle('active', b.dataset.shape === shapeType);
+      });
+    }
+    setShapeIcon();
+    markActiveShapeOption();
+
+    btnShapes.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (tool === 'shape') {
+        shapesPopover.classList.toggle('hidden');
+      } else {
+        setActiveTool('shape');
+        shapesPopover.classList.remove('hidden');
+      }
     });
+    shapesPopover.addEventListener('click', (e) => e.stopPropagation());
+    shapesPopover.querySelectorAll('.shape-opt').forEach((b) => {
+      b.addEventListener('click', () => {
+        shapeType = b.dataset.shape;
+        setShapeIcon();
+        markActiveShapeOption();
+        setActiveTool('shape');
+        hideShapesPopover();
+      });
+    });
+    document.addEventListener('click', () => hideShapesPopover());
+
+    // Color palette button + popover
+    (function initColorPalette() {
+      const COLOR_SWATCHES = [
+        '#1c1917', '#6b7280', '#ffffff', '#ef4444',
+        '#f97316', '#eab308', '#22c55e', '#3b82f6',
+        '#8b5cf6', '#ec4899', '#14b8a6', '#92400e'
+      ];
+
+      const swatchWrap = document.getElementById('color-swatches');
+      COLOR_SWATCHES.forEach((color) => {
+        const sw = document.createElement('button');
+        sw.type = 'button';
+        sw.title = color;
+        sw.style.backgroundColor = color;
+        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.addEventListener('click', () => {
+          setStrokeColor(color);
+          document.getElementById('color-popover').classList.add('hidden');
+          if (tool === 'eraser' || tool === 'rainbow') setActiveTool('pen');
+        });
+        swatchWrap.appendChild(sw);
+      });
+
+      const btnColor = document.getElementById('btn-color');
+      const colorPopover = document.getElementById('color-popover');
+
+      function openColorPopover() {
+        const rect = btnColor.getBoundingClientRect();
+        colorPopover.style.top = (rect.bottom + 8) + 'px';
+        const left = Math.min(rect.left, window.innerWidth - 184);
+        colorPopover.style.left = Math.max(4, left) + 'px';
+        colorPopover.classList.remove('hidden');
+      }
+
+      function closeColorPopover() {
+        colorPopover.classList.add('hidden');
+      }
+
+      btnColor.addEventListener('click', () => {
+        if (colorPopover.classList.contains('hidden')) {
+          document.getElementById('bg-popover').classList.add('hidden');
+          openColorPopover();
+        } else {
+          closeColorPopover();
+        }
+      });
+
+      // Close on outside mousedown — fires before click, no stopPropagation needed
+      document.addEventListener('mousedown', (e) => {
+        if (!colorPopover.classList.contains('hidden') &&
+            !colorPopover.contains(e.target) &&
+            !btnColor.contains(e.target)) {
+          closeColorPopover();
+        }
+      });
+
+      document.getElementById('color-custom-stroke').addEventListener('input', (e) => {
+        setStrokeColor(e.target.value);
+        if (tool === 'eraser' || tool === 'rainbow') setActiveTool('pen');
+      });
+    })();
 
     const sizeSlider = document.getElementById('stroke-size');
     const sizeLabel = document.getElementById('size-label');
@@ -1491,13 +1735,10 @@
       syncThemeIcon();
 
       // Switch default stroke color when changing theme
-      const picker = document.getElementById('color-picker');
       if (nowDark && strokeColor === DEFAULT_STROKE_LIGHT) {
-        strokeColor = DEFAULT_STROKE_DARK;
-        picker.value = strokeColor;
+        setStrokeColor(DEFAULT_STROKE_DARK);
       } else if (!nowDark && strokeColor === DEFAULT_STROKE_DARK) {
-        strokeColor = DEFAULT_STROKE_LIGHT;
-        picker.value = strokeColor;
+        setStrokeColor(DEFAULT_STROKE_LIGHT);
       }
       updateBrushCursor();
     });
@@ -1584,9 +1825,12 @@
       btnBg.addEventListener('click', (e) => {
         e.stopPropagation();
         popover.classList.toggle('hidden');
+        document.getElementById('color-popover').classList.add('hidden');
       });
       popover.addEventListener('click', (e) => e.stopPropagation());
-      document.addEventListener('click', () => popover.classList.add('hidden'));
+      document.addEventListener('click', () => {
+        popover.classList.add('hidden');
+      });
 
       document.getElementById('bg-custom').addEventListener('input', (e) => {
         setBackground(e.target.value);
