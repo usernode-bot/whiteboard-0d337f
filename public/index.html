@@ -188,7 +188,9 @@
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
-    <input id="color-picker" type="color" value="#1c1917" class="w-9 h-9 rounded-lg bg-transparent" title="Color">
+    <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
+      <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
+    </button>
 
     <div class="flex items-center gap-1">
       <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
@@ -245,6 +247,15 @@
       <!-- Sun: shown in dark mode, hidden in light mode -->
       <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
+  </div>
+
+  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
+    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+    <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+      <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
+      Custom
+    </label>
   </div>
 
   <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
@@ -319,8 +330,16 @@
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
 
-    // Sync color picker with initial theme
-    document.getElementById('color-picker').value = strokeColor;
+    function setStrokeColor(hex) {
+      strokeColor = hex;
+      document.getElementById('color-dot').style.backgroundColor = hex;
+      if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        document.getElementById('color-custom-stroke').value = hex;
+      }
+    }
+
+    // Sync color dot with initial theme
+    setStrokeColor(strokeColor);
 
     // Update theme toggle icon visibility
     function syncThemeIcon() {
@@ -1134,13 +1153,67 @@
     });
     document.addEventListener('click', () => hideShapesPopover());
 
-    document.getElementById('color-picker').addEventListener('input', (e) => {
-      strokeColor = e.target.value;
-      // Keep shape mode active so the chosen color applies to the next shape;
-      // for the freehand/eraser/etc. tools, fall back to the pen as before.
-      if (tool !== 'shape') setActiveTool('pen');
-      updateBrushCursor();
-    });
+    // Color palette button + popover
+    (function initColorPalette() {
+      const COLOR_SWATCHES = [
+        '#1c1917', '#6b7280', '#ffffff', '#ef4444',
+        '#f97316', '#eab308', '#22c55e', '#3b82f6',
+        '#8b5cf6', '#ec4899', '#14b8a6', '#92400e'
+      ];
+
+      const swatchWrap = document.getElementById('color-swatches');
+      COLOR_SWATCHES.forEach((color) => {
+        const sw = document.createElement('button');
+        sw.type = 'button';
+        sw.title = color;
+        sw.style.backgroundColor = color;
+        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.addEventListener('click', () => {
+          setStrokeColor(color);
+          document.getElementById('color-popover').classList.add('hidden');
+          if (tool === 'eraser' || tool === 'rainbow') setActiveTool('pen');
+        });
+        swatchWrap.appendChild(sw);
+      });
+
+      const btnColor = document.getElementById('btn-color');
+      const colorPopover = document.getElementById('color-popover');
+
+      function openColorPopover() {
+        const rect = btnColor.getBoundingClientRect();
+        colorPopover.style.top = (rect.bottom + 8) + 'px';
+        const left = Math.min(rect.left, window.innerWidth - 184);
+        colorPopover.style.left = Math.max(4, left) + 'px';
+        colorPopover.classList.remove('hidden');
+      }
+
+      function closeColorPopover() {
+        colorPopover.classList.add('hidden');
+      }
+
+      btnColor.addEventListener('click', () => {
+        if (colorPopover.classList.contains('hidden')) {
+          document.getElementById('bg-popover').classList.add('hidden');
+          openColorPopover();
+        } else {
+          closeColorPopover();
+        }
+      });
+
+      // Close on outside mousedown — fires before click, no stopPropagation needed
+      document.addEventListener('mousedown', (e) => {
+        if (!colorPopover.classList.contains('hidden') &&
+            !colorPopover.contains(e.target) &&
+            !btnColor.contains(e.target)) {
+          closeColorPopover();
+        }
+      });
+
+      document.getElementById('color-custom-stroke').addEventListener('input', (e) => {
+        setStrokeColor(e.target.value);
+        if (tool === 'eraser' || tool === 'rainbow') setActiveTool('pen');
+      });
+    })();
 
     const sizeSlider = document.getElementById('stroke-size');
     const sizeLabel = document.getElementById('size-label');
@@ -1227,13 +1300,10 @@
       syncThemeIcon();
 
       // Switch default stroke color when changing theme
-      const picker = document.getElementById('color-picker');
       if (nowDark && strokeColor === DEFAULT_STROKE_LIGHT) {
-        strokeColor = DEFAULT_STROKE_DARK;
-        picker.value = strokeColor;
+        setStrokeColor(DEFAULT_STROKE_DARK);
       } else if (!nowDark && strokeColor === DEFAULT_STROKE_DARK) {
-        strokeColor = DEFAULT_STROKE_LIGHT;
-        picker.value = strokeColor;
+        setStrokeColor(DEFAULT_STROKE_LIGHT);
       }
       updateBrushCursor();
     });
@@ -1314,9 +1384,12 @@
       btnBg.addEventListener('click', (e) => {
         e.stopPropagation();
         popover.classList.toggle('hidden');
+        document.getElementById('color-popover').classList.add('hidden');
       });
       popover.addEventListener('click', (e) => e.stopPropagation());
-      document.addEventListener('click', () => popover.classList.add('hidden'));
+      document.addEventListener('click', () => {
+        popover.classList.add('hidden');
+      });
 
       document.getElementById('bg-custom').addEventListener('input', (e) => {
         setBackground(e.target.value);
