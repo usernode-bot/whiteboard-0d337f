@@ -20,7 +20,7 @@ function broadcast(event, data) {
 
 const PUBLIC_API_PATHS = new Set(['/health']);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
