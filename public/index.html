@@ -198,8 +198,8 @@
     <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
     </button>
-    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Upload Image">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    <button id="btn-select" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Select / Move layer">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
     </button>
     <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
@@ -207,6 +207,11 @@
     <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
     </button>
+    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    </button>
+    <input type="file" id="image-input" accept="image/*" class="hidden">
+
     <div class="relative">
       <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
         <!-- icon swapped in JS to reflect the selected shape -->
@@ -228,6 +233,20 @@
     <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </button>
+
+    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+    <div id="layer-actions" class="hidden items-center gap-1">
+      <button id="btn-front" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Bring to front">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>
+      </button>
+      <button id="btn-back" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Send to back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1"/><path d="M20 8v11a1 1 0 0 1-1 1H8"/></svg>
+      </button>
+      <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+      </button>
+    </div>
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
@@ -357,10 +376,23 @@
     }
 
     let strokes = [];
-    let redoStack = [];
+    // Action-history undo/redo. Each entry: {type:'add'|'delete'|'move'|'reorder', id, ...}
+    let undoStack = [];
+    let redoActions = [];
     let currentStroke = null;
-    const imageCache = new Map();
     let tool = 'pen';
+
+    // Selection / layer-manipulation state
+    let selectedLayer = null;
+    let isDraggingLayer = false;
+    let dragStartWorld = { x: 0, y: 0 };
+    let dragOrigDx = 0;
+    let dragOrigDy = 0;
+    let layerMoved = false;
+    let isErasing = false;
+
+    // Decoded <img> cache keyed by data URL src.
+    const imageCache = {};
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
     let strokeWidth = 3;
     let isDrawing = false;
@@ -486,6 +518,11 @@
         canvas.style.cursor = 'text';
         return;
       }
+      if (tool === 'select') {
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'default';
+        return;
+      }
       if (tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
         canvas.style.cursor = tool === 'comment' ? 'cell' : 'crosshair';
@@ -508,7 +545,18 @@
       redrawAll();
     }
 
-    function redrawAll() {
+    // Stable z-order: explicit z_index, falling back to id for legacy rows.
+    function sortStrokes() {
+      strokes.sort((a, b) => {
+        const za = a.z_index != null ? a.z_index : (a.id || 0);
+        const zb = b.z_index != null ? b.z_index : (b.id || 0);
+        if (za !== zb) return za - zb;
+        return (a.id || 0) - (b.id || 0);
+      });
+    }
+
+    function redrawAll(noSelection) {
+      sortStrokes();
       const cos = Math.cos(rotation), sin = Math.sin(rotation);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -517,16 +565,43 @@
         drawItem(s.stroke_data || s);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (!noSelection) drawSelectionOverlay();
       updatePins();
     }
 
     function drawItem(item) {
+      // Per-layer translation (dx/dy) so moving never rewrites point arrays.
+      const dx = item.dx || 0, dy = item.dy || 0;
+      ctx.save();
+      ctx.translate(dx, dy);
       if (item.type === 'emoji') {
         drawEmoji(item);
+      } else if (item.type === 'image') {
+        drawImageItem(item);
       } else if (item.type === 'shape') {
         drawShape(item);
       } else {
         drawStroke(item);
+      }
+      ctx.restore();
+    }
+
+    function getImage(src) {
+      let img = imageCache[src];
+      if (!img) {
+        img = new Image();
+        img.onload = () => redrawAll();
+        img.src = src;
+        imageCache[src] = img;
+      }
+      return img;
+    }
+
+    function drawImageItem(item) {
+      const img = getImage(item.src);
+      if (img.complete && img.naturalWidth) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(img, item.x, item.y, item.w, item.h);
       }
     }
 
@@ -576,12 +651,12 @@
       }
       if (s.type === 'image') {
         const cacheKey = s.dataUrl.slice(0, 64);
-        let img = imageCache.get(cacheKey);
+        let img = imageCache[cacheKey];
         if (!img) {
           img = new Image();
           img.onload = () => redrawAll();
           img.src = s.dataUrl;
-          imageCache.set(cacheKey, img);
+          imageCache[cacheKey] = img;
         }
         if (img.complete && img.naturalWidth > 0) {
           ctx.globalCompositeOperation = 'source-over';
@@ -628,15 +703,256 @@
       };
     }
 
-    // Inverse of screenToWorld — full rotation-aware transform (matches
-    // redrawAll's setTransform). Used to position comment pins each frame.
-    function worldToScreen(wx, wy) {
+    function worldToScreen(x, y) {
       const cos = Math.cos(rotation), sin = Math.sin(rotation);
       return {
-        x: scale * (cos * wx - sin * wy) + offsetX,
-        y: scale * (sin * wx + cos * wy) + offsetY
+        x: scale * cos * x - scale * sin * y + offsetX,
+        y: scale * sin * x + scale * cos * y + offsetY
       };
     }
+
+    // World-space axis-aligned bounding box for a layer, including its dx/dy.
+    function getLayerBBox(item) {
+      const dx = item.dx || 0, dy = item.dy || 0;
+      if (item.type === 'text') {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.font = item.fontSize + 'px sans-serif';
+        const w = ctx.measureText(item.text || '').width;
+        ctx.restore();
+        // fillText uses left/alphabetic baseline at (x, y).
+        return { minX: item.x + dx, minY: item.y + dy - item.fontSize, maxX: item.x + dx + w, maxY: item.y + dy + item.fontSize * 0.3 };
+      }
+      if (item.type === 'emoji') {
+        const h = item.size / 2;
+        return { minX: item.x + dx - h, minY: item.y + dy - h, maxX: item.x + dx + h, maxY: item.y + dy + h };
+      }
+      if (item.type === 'image') {
+        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + item.w, maxY: item.y + dy + item.h };
+      }
+      if (item.points && item.points.length) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of item.points) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+        const r = (item.width || 1) / 2 + 4;
+        return { minX: minX + dx - r, minY: minY + dy - r, maxX: maxX + dx + r, maxY: maxY + dy + r };
+      }
+      return null;
+    }
+
+    // Topmost layer (highest z) whose bbox contains the world point.
+    function hitTest(wx, wy) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const item = strokes[i].stroke_data || strokes[i];
+        const b = getLayerBBox(item);
+        if (b && wx >= b.minX && wx <= b.maxX && wy >= b.minY && wy <= b.maxY) {
+          return strokes[i];
+        }
+      }
+      return null;
+    }
+
+    function drawSelectionOverlay() {
+      if (!selectedLayer) return;
+      const item = selectedLayer.stroke_data || selectedLayer;
+      const b = getLayerBBox(item);
+      if (!b) return;
+      const corners = [
+        worldToScreen(b.minX, b.minY),
+        worldToScreen(b.maxX, b.minY),
+        worldToScreen(b.maxX, b.maxY),
+        worldToScreen(b.minX, b.maxY)
+      ];
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#7c3aed';
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(corners[0].x, corners[0].y);
+      for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // --- Selection / layer manipulation ---
+
+    function selectLayer(layer) {
+      selectedLayer = layer;
+      document.getElementById('layer-actions').classList.remove('hidden');
+      document.getElementById('layer-actions').classList.add('flex');
+      redrawAll();
+    }
+
+    function deselectLayer() {
+      if (!selectedLayer) return;
+      selectedLayer = null;
+      const la = document.getElementById('layer-actions');
+      la.classList.add('hidden');
+      la.classList.remove('flex');
+      redrawAll();
+    }
+
+    function findLayer(id) {
+      return strokes.find(s => s.id === id);
+    }
+
+    async function patchLayer(id, body) {
+      try {
+        const res = await fetch('/api/strokes/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) return await res.json();
+      } catch (err) {
+        console.error('Update layer failed:', err);
+      }
+      return null;
+    }
+
+    function removeLayerById(id) {
+      const idx = strokes.findIndex(s => s.id === id);
+      if (idx !== -1) strokes.splice(idx, 1);
+      if (selectedLayer && selectedLayer.id === id) deselectLayer();
+      if (id) {
+        fetch('/api/strokes/' + id, { method: 'DELETE', headers: { ...headers } })
+          .catch(err => console.error('Delete failed:', err));
+      }
+      redrawAll();
+    }
+
+    function beginLayerDrag(pos) {
+      const hit = hitTest(pos.x, pos.y);
+      if (hit) {
+        selectLayer(hit);
+        isDraggingLayer = true;
+        dragStartWorld = pos;
+        const sd = hit.stroke_data || hit;
+        dragOrigDx = sd.dx || 0;
+        dragOrigDy = sd.dy || 0;
+        layerMoved = false;
+      } else {
+        deselectLayer();
+      }
+    }
+
+    function updateLayerDrag(pos) {
+      if (!isDraggingLayer || !selectedLayer) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      sd.dx = dragOrigDx + (pos.x - dragStartWorld.x);
+      sd.dy = dragOrigDy + (pos.y - dragStartWorld.y);
+      layerMoved = true;
+      redrawAll();
+    }
+
+    function endLayerDrag() {
+      if (!isDraggingLayer) return;
+      isDraggingLayer = false;
+      if (layerMoved && selectedLayer) {
+        const sd = selectedLayer.stroke_data || selectedLayer;
+        recordAction({ type: 'move', id: selectedLayer.id, before: { dx: dragOrigDx, dy: dragOrigDy }, after: { dx: sd.dx || 0, dy: sd.dy || 0 } });
+        patchLayer(selectedLayer.id, { stroke_data: sd });
+      }
+    }
+
+    function eraseAt(pos) {
+      const hit = hitTest(pos.x, pos.y);
+      if (hit) {
+        recordAction({ type: 'delete', id: hit.id, data: hit.stroke_data || hit, z_index: hit.z_index });
+        removeLayerById(hit.id);
+      }
+    }
+
+    function deleteSelected() {
+      if (!selectedLayer) return;
+      const layer = selectedLayer;
+      recordAction({ type: 'delete', id: layer.id, data: layer.stroke_data || layer, z_index: layer.z_index });
+      removeLayerById(layer.id);
+    }
+
+    async function reorderSelected(dir) {
+      if (!selectedLayer) return;
+      const before = selectedLayer.z_index;
+      const res = await patchLayer(selectedLayer.id, { z_index: dir });
+      if (res) {
+        selectedLayer.z_index = res.z_index;
+        recordAction({ type: 'reorder', id: selectedLayer.id, before, after: res.z_index });
+        sortStrokes();
+        redrawAll();
+      }
+    }
+
+    // --- Action-history undo/redo ---
+
+    function recordAction(a) {
+      undoStack.push(a);
+      redoActions = [];
+    }
+
+    async function recreateLayer(action) {
+      const saved = await saveStroke(action.data);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: action.data, z_index: saved.z_index });
+        action.id = saved.id; // subsequent redo/undo targets the new row
+        sortStrokes();
+        redrawAll();
+      }
+    }
+
+    async function applyUndo(a) {
+      if (a.type === 'add') {
+        removeLayerById(a.id);
+      } else if (a.type === 'delete') {
+        await recreateLayer(a);
+      } else if (a.type === 'move') {
+        const l = findLayer(a.id);
+        if (l) {
+          const sd = l.stroke_data || l;
+          sd.dx = a.before.dx; sd.dy = a.before.dy;
+          patchLayer(a.id, { stroke_data: sd });
+          redrawAll();
+        }
+      } else if (a.type === 'reorder') {
+        const l = findLayer(a.id);
+        if (l) {
+          const res = await patchLayer(a.id, { z_index: a.before });
+          if (res) l.z_index = res.z_index;
+          sortStrokes();
+          redrawAll();
+        }
+      }
+    }
+
+    async function applyRedo(a) {
+      if (a.type === 'add') {
+        await recreateLayer(a);
+      } else if (a.type === 'delete') {
+        removeLayerById(a.id);
+      } else if (a.type === 'move') {
+        const l = findLayer(a.id);
+        if (l) {
+          const sd = l.stroke_data || l;
+          sd.dx = a.after.dx; sd.dy = a.after.dy;
+          patchLayer(a.id, { stroke_data: sd });
+          redrawAll();
+        }
+      } else if (a.type === 'reorder') {
+        const l = findLayer(a.id);
+        if (l) {
+          const res = await patchLayer(a.id, { z_index: a.after });
+          if (res) l.z_index = res.z_index;
+          sortStrokes();
+          redrawAll();
+        }
+      }
+    }
+
 
     function getPos(e) {
       let sx, sy;
@@ -685,11 +1001,14 @@
         const textInput = document.getElementById('text-input');
         if (textInput.style.display !== 'none') commitText();
       }
+      // Leaving the select tool clears any active selection.
+      if (tool === 'select' && newTool !== 'select') deselectLayer();
       tool = newTool;
       document.getElementById('btn-pen').classList.toggle('active', newTool === 'pen');
       document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
       document.getElementById('btn-text').classList.toggle('active', newTool === 'text');
+      document.getElementById('btn-select').classList.toggle('active', newTool === 'select');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
       document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
@@ -701,6 +1020,10 @@
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
+      } else if (newTool === 'select') {
+        canvas.style.cursor = 'default';
+        brushCursor.style.display = 'none';
+        canvas.classList.remove('panning');
       } else if (newTool === 'emoji') {
         canvas.classList.remove('panning');
         brushCursor.style.display = 'none';
@@ -744,11 +1067,12 @@
 
     function placeEmoji(e) {
       const pos = getPos(e);
-      const item = { type: 'emoji', emoji: selectedEmoji, x: pos.x, y: pos.y, size: EMOJI_SIZE };
+      const item = { type: 'emoji', emoji: selectedEmoji, x: pos.x, y: pos.y, size: EMOJI_SIZE, dx: 0, dy: 0 };
       saveStroke(item).then((saved) => {
         if (saved) {
-          strokes.push({ id: saved.id, stroke_data: item });
-          redoStack = [];
+          strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index });
+          recordAction({ type: 'add', id: saved.id, data: item });
+          sortStrokes();
           redrawAll();
         }
       });
@@ -771,7 +1095,7 @@
 
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
-      if (tool === 'move' || tool === 'text' || tool === 'comment') return;
+      if (tool !== 'pen' && tool !== 'rainbow' && !isShapeTool()) return;
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
@@ -785,7 +1109,7 @@
         points: [pos],
         color: strokeColor,
         width: strokeWidth,
-        eraser: tool === 'eraser',
+        eraser: false,
         rainbow: tool === 'rainbow'
       };
     }
@@ -868,7 +1192,7 @@
             const saved = await saveStroke(strokeData);
             if (saved) {
               strokes.push({ id: saved.id, stroke_data: strokeData });
-              redoStack = [];
+              redoActions = [];
             }
           }
         }
@@ -885,12 +1209,14 @@
           color: currentStroke.color,
           width: currentStroke.width,
           eraser: currentStroke.eraser,
-          rainbow: currentStroke.rainbow
+          rainbow: currentStroke.rainbow,
+          dx: 0,
+          dy: 0
         };
         const saved = await saveStroke(strokeData);
         if (saved) {
-          strokes.push({ id: saved.id, stroke_data: strokeData });
-          redoStack = [];
+          strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+          recordAction({ type: 'add', id: saved.id, data: strokeData });
         }
       }
       currentStroke = null;
@@ -943,6 +1269,19 @@
         openComposer(e.clientX, e.clientY);
         return;
       }
+      // Select tool: pick / start dragging a layer
+      if (tool === 'select' && e.button === 0) {
+        e.preventDefault();
+        beginLayerDrag(getPos(e));
+        return;
+      }
+      // Object eraser: delete whole layers under the pointer
+      if (tool === 'eraser' && e.button === 0) {
+        e.preventDefault();
+        isErasing = true;
+        eraseAt(getPos(e));
+        return;
+      }
       startDraw(e);
     });
 
@@ -956,13 +1295,21 @@
     });
 
     canvas.addEventListener('mousemove', (e) => {
-      if (tool !== 'move') {
+      if (tool !== 'move' && tool !== 'select') {
         moveBrushCursor(e.clientX, e.clientY);
       }
       if (isPanning) {
         offsetX = panStartOffsetX + (e.clientX - panStartX);
         offsetY = panStartOffsetY + (e.clientY - panStartY);
         redrawAll();
+        return;
+      }
+      if (isDraggingLayer) {
+        updateLayerDrag(getPos(e));
+        return;
+      }
+      if (isErasing) {
+        eraseAt(getPos(e));
         return;
       }
       moveDraw(e);
@@ -974,6 +1321,8 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isDraggingLayer) { endLayerDrag(); return; }
+      if (isErasing) { isErasing = false; return; }
       endDraw(e);
     });
 
@@ -984,6 +1333,8 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isDraggingLayer) { endLayerDrag(); return; }
+      if (isErasing) { isErasing = false; return; }
       endDraw(e);
     });
 
@@ -1092,6 +1443,20 @@
         return;
       }
 
+      // Select tool: pick / start dragging a layer
+      if (tool === 'select') {
+        e.preventDefault();
+        if (e.touches.length === 1) beginLayerDrag(getPos(e));
+        return;
+      }
+
+      // Object eraser: delete whole layers under the touch
+      if (tool === 'eraser') {
+        e.preventDefault();
+        if (e.touches.length === 1) { isErasing = true; eraseAt(getPos(e)); }
+        return;
+      }
+
       // Drawing mode (single touch)
       if (e.touches.length === 1) {
         updateBrushCursor();
@@ -1144,6 +1509,18 @@
         return;
       }
 
+      if (tool === 'select') {
+        e.preventDefault();
+        if (isDraggingLayer && e.touches.length === 1) updateLayerDrag(getPos(e));
+        return;
+      }
+
+      if (tool === 'eraser') {
+        e.preventDefault();
+        if (isErasing && e.touches.length === 1) eraseAt(getPos(e));
+        return;
+      }
+
       // Drawing mode
       if (e.touches.length === 1) {
         moveBrushCursor(e.touches[0].clientX, e.touches[0].clientY);
@@ -1162,6 +1539,8 @@
         isPanning = false;
         return;
       }
+      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
@@ -1177,6 +1556,8 @@
         isPanning = false;
         return;
       }
+      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
@@ -1191,8 +1572,16 @@
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
+    document.getElementById('btn-select').addEventListener('click', () => setActiveTool('select'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
     document.getElementById('btn-comment').addEventListener('click', () => setActiveTool('comment'));
+
+    // Layer actions (visible only while a layer is selected)
+    document.getElementById('btn-front').addEventListener('click', () => reorderSelected('front'));
+    document.getElementById('btn-back').addEventListener('click', () => reorderSelected('back'));
+    document.getElementById('btn-delete-layer').addEventListener('click', () => deleteSelected());
+
+
     document.getElementById('btn-emoji').addEventListener('click', () => {
       if (tool === 'emoji') {
         toggleEmojiPicker();
@@ -1257,7 +1646,7 @@
         const saved = await saveStroke(strokeData);
         if (saved) {
           strokes.push({ id: saved.id, stroke_data: strokeData });
-          redoStack = [];
+          redoActions = [];
           redrawAll();
         }
       };
@@ -1377,32 +1766,17 @@
     });
 
     document.getElementById('btn-undo').addEventListener('click', async () => {
-      if (strokes.length === 0) return;
-      const last = strokes[strokes.length - 1];
-      if (last.id) {
-        try {
-          await fetch('/api/strokes/' + last.id, {
-            method: 'DELETE',
-            headers: { ...headers }
-          });
-        } catch (err) {
-          console.error('Undo delete failed:', err);
-        }
-      }
-      redoStack.push(strokes.pop());
-      redrawAll();
+      if (undoStack.length === 0) return;
+      const a = undoStack.pop();
+      await applyUndo(a);
+      redoActions.push(a);
     });
 
     document.getElementById('btn-redo').addEventListener('click', async () => {
-      if (redoStack.length === 0) return;
-      const stroke = redoStack.pop();
-      const data = stroke.stroke_data || stroke;
-      const saved = await saveStroke(data);
-      if (saved) {
-        stroke.id = saved.id;
-      }
-      strokes.push(stroke);
-      redrawAll();
+      if (redoActions.length === 0) return;
+      const a = redoActions.pop();
+      await applyRedo(a);
+      undoStack.push(a);
     });
 
     function showConfirm(msg) {
@@ -1438,7 +1812,9 @@
         console.error('Clear failed:', err);
       }
       strokes = [];
-      redoStack = [];
+      undoStack = [];
+      redoActions = [];
+      deselectLayer();
       redrawAll();
     });
 
@@ -1474,6 +1850,12 @@
       if ((e.ctrlKey || e.metaKey) && e.key === '0') {
         e.preventDefault();
         resetView();
+      }
+      // Delete / Backspace removes the selected layer
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLayer) {
+        e.preventDefault();
+        deleteSelected();
+        return;
       }
       // Spacebar hold for temporary move mode
       if (e.key === ' ' && !e.repeat && previousTool === null) {
@@ -1593,12 +1975,15 @@
         y: pendingTextY,
         text: text,
         color: strokeColor,
-        fontSize: strokeWidth * 5
+        fontSize: strokeWidth * 5,
+        dx: 0,
+        dy: 0
       };
       const saved = await saveStroke(strokeData);
       if (saved) {
-        strokes.push({ id: saved.id, stroke_data: strokeData });
-        redoStack = [];
+        strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+        recordAction({ type: 'add', id: saved.id, data: strokeData });
+        sortStrokes();
         redrawAll();
       }
     }
@@ -1970,7 +2355,10 @@
         if (!res.ok) return;
         const data = await res.json();
         strokes = data.strokes || [];
-        redoStack = [];
+        undoStack = [];
+        redoActions = [];
+        deselectLayer();
+        sortStrokes();
         redrawAll();
         showStatus('Board refreshed');
       } catch (err) {
@@ -1987,10 +2375,21 @@
         const exists = strokes.some(s => s.id === data.id);
         if (!exists) {
           const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
-          strokes.push({ id: data.id, stroke_data: strokeData });
-          ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-          drawItem(strokeData);
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          strokes.push({ id: data.id, stroke_data: strokeData, z_index: data.z_index });
+          sortStrokes();
+          redrawAll();
+        }
+      });
+
+      es.addEventListener('update', (e) => {
+        const data = JSON.parse(e.data);
+        const sd = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
+        const layer = strokes.find(s => s.id === data.id);
+        if (layer) {
+          if (sd) layer.stroke_data = sd;
+          if (data.z_index != null) layer.z_index = data.z_index;
+          sortStrokes();
+          redrawAll();
         }
       });
 
@@ -1998,6 +2397,7 @@
         const data = JSON.parse(e.data);
         const idx = strokes.findIndex(s => s.id === data.id);
         if (idx !== -1) {
+          if (selectedLayer && selectedLayer.id === data.id) deselectLayer();
           strokes.splice(idx, 1);
           redrawAll();
         }
@@ -2005,7 +2405,9 @@
 
       es.addEventListener('clear', () => {
         strokes = [];
-        redoStack = [];
+        undoStack = [];
+        redoActions = [];
+        deselectLayer();
         redrawAll();
         // Strokes are gone; re-fetch threads so anchors that the server
         // nulled (ON DELETE SET NULL) are reflected locally.
@@ -2052,6 +2454,9 @@
     // --- PDF export ---
 
     function exportToPdf(bgColor) {
+      // Redraw without the selection overlay so it isn't baked into the export.
+      redrawAll(true);
+
       // Composite the existing canvas (transparent strokes) over chosen background
       const exportCanvas = document.createElement('canvas');
       exportCanvas.width = canvas.width;
@@ -2063,6 +2468,9 @@
         exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
       }
       exportCtx.drawImage(canvas, 0, 0);
+
+      // Restore the on-screen selection overlay (if any).
+      redrawAll();
 
       const dataUrl = exportCanvas.toDataURL('image/png');
       const { jsPDF } = window.jspdf;
