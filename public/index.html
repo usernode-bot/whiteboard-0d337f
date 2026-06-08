@@ -403,6 +403,126 @@
       return 'hsl(' + (((index * RAINBOW_HUE_STEP) % 360 + 360) % 360) + ', 90%, 55%)';
     }
 
+    // --- Handwriting optimisation tuning constants ---
+    // Variable width maps drawing speed (and pressure where available) to a
+    // multiplier of the base stroke width. Faster motion / lighter pressure =>
+    // thinner; slower / heavier => thicker. World-space so it's zoom-invariant.
+    const WIDTH_MIN_MULT = 0.5;   // thinnest (fast / light)
+    const WIDTH_MAX_MULT = 1.6;   // thickest (slow / heavy)
+    const SPEED_MAX = 2.0;        // world px per ms at which width hits the minimum
+    const WIDTH_EMA_ALPHA = 0.5;  // exponential smoothing of per-point widths
+    const MIN_POINT_DIST = 1.5;   // world px; points closer than this are thinned out
+
+    // Pen pressure captured from PointerEvents (stylus only). 0 means "no real
+    // signal" (mouse, or a pen that doesn't report pressure) and falls back to
+    // the speed-based model. Touch pressure is read from TouchEvent force.
+    let penPressure = 0;
+
+    function speedToWidth(speed, baseWidth) {
+      const t = Math.min(1, speed / SPEED_MAX);
+      const mult = WIDTH_MAX_MULT + (WIDTH_MIN_MULT - WIDTH_MAX_MULT) * t;
+      return baseWidth * mult;
+    }
+
+    function pressureToWidth(pressure, baseWidth) {
+      const p = Math.max(0, Math.min(1, pressure));
+      return baseWidth * (WIDTH_MIN_MULT + (WIDTH_MAX_MULT - WIDTH_MIN_MULT) * p);
+    }
+
+    // Read a real pressure signal for the current input event, or 0 if none.
+    // Touch: TouchEvent.force (>0 on Apple Pencil / 3D-touch). Mouse path:
+    // the last pen-pointer pressure stashed by the pointer listeners.
+    function getPressure(e) {
+      if (e.touches && e.touches.length > 0) {
+        const f = e.touches[0].force;
+        return (typeof f === 'number' && f > 0) ? f : 0;
+      }
+      return penPressure;
+    }
+
+    // Forward pass: bake a per-point width `w` from stored speed (point.t) and
+    // pressure (point.pr), EMA-smoothed. Deterministic, so the live preview and
+    // every client that re-renders the saved stroke agree.
+    function computePointWidths(points, baseWidth) {
+      let ema = baseWidth;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        let target;
+        if (typeof p.pr === 'number' && p.pr > 0) {
+          target = pressureToWidth(p.pr, baseWidth);
+        } else if (i > 0 && typeof p.t === 'number' && typeof points[i - 1].t === 'number') {
+          const dt = Math.max(1, p.t - points[i - 1].t);
+          const dx = p.x - points[i - 1].x;
+          const dy = p.y - points[i - 1].y;
+          const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+          target = speedToWidth(speed, baseWidth);
+        } else {
+          target = baseWidth;
+        }
+        ema = i === 0 ? target : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * ema);
+        p.w = ema;
+      }
+    }
+
+    // Quadratic-midpoint smoothing: builds a single smooth path through the
+    // points (caller does beginPath/strokeStyle/lineWidth/stroke). Used for
+    // uniform-width strokes (existing saved strokes, eraser).
+    function buildSmoothPath(ctx, points) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.moveTo(points[0].x, points[0].y);
+      if (n === 2) {
+        ctx.lineTo(points[1].x, points[1].y);
+        return;
+      }
+      for (let i = 1; i < n - 1; i++) {
+        const mx = (points[i].x + points[i + 1].x) / 2;
+        const my = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+      }
+      // Final segment runs through the last raw point.
+      ctx.quadraticCurveTo(points[n - 2].x, points[n - 2].y, points[n - 1].x, points[n - 1].y);
+    }
+
+    // Smoothed render, segment-by-segment, so each piece can carry its own
+    // width (point.w) and/or colour (getColor). Used for variable-width pen and
+    // for the rainbow brush. Falls back to baseWidth where a point lacks `w`.
+    function strokeSmoothSegments(ctx, points, getColor, baseWidth) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (n === 2) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.lineTo(points[1].x, points[1].y);
+        ctx.lineWidth = typeof points[1].w === 'number' ? points[1].w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(1);
+        ctx.stroke();
+        return;
+      }
+      let prevMidX = points[0].x, prevMidY = points[0].y;
+      for (let i = 1; i < n; i++) {
+        const p = points[i];
+        let midX, midY;
+        if (i < n - 1) {
+          midX = (p.x + points[i + 1].x) / 2;
+          midY = (p.y + points[i + 1].y) / 2;
+        } else {
+          midX = p.x;
+          midY = p.y;
+        }
+        ctx.beginPath();
+        ctx.moveTo(prevMidX, prevMidY);
+        ctx.quadraticCurveTo(p.x, p.y, midX, midY);
+        ctx.lineWidth = typeof p.w === 'number' ? p.w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(i);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
+      }
+    }
+
     function hexToRgba(hex, alpha) {
       const r = parseInt(hex.slice(1, 3), 16);
       const g = parseInt(hex.slice(3, 5), 16);
@@ -552,23 +672,29 @@
       if (!s.points || s.points.length < 2) return;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = s.width;
+
+      // Rainbow: smoothed, per-segment hue (and variable width when the points
+      // carry `w`; older strokes without `w` fall back to the base width).
       if (s.rainbow && !s.eraser) {
         ctx.globalCompositeOperation = 'source-over';
-        for (let i = 1; i < s.points.length; i++) {
-          ctx.beginPath();
-          ctx.moveTo(s.points[i - 1].x, s.points[i - 1].y);
-          ctx.lineTo(s.points[i].x, s.points[i].y);
-          ctx.strokeStyle = rainbowColor(i);
-          ctx.stroke();
-        }
+        strokeSmoothSegments(ctx, s.points, rainbowColor, s.width);
         return;
       }
-      ctx.beginPath();
-      ctx.moveTo(s.points[0].x, s.points[0].y);
-      for (let i = 1; i < s.points.length; i++) {
-        ctx.lineTo(s.points[i].x, s.points[i].y);
+
+      // Variable-width pen: smoothed, per-segment width baked into the points.
+      const hasVarWidth = !s.eraser && s.points.some((p) => typeof p.w === 'number');
+      if (hasVarWidth) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = s.color;
+        strokeSmoothSegments(ctx, s.points, null, s.width);
+        return;
       }
+
+      // Uniform width (eraser, and legacy strokes saved before variable width):
+      // a single smooth quadratic path at the base width.
+      ctx.lineWidth = s.width;
+      ctx.beginPath();
+      buildSmoothPath(ctx, s.points);
       ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
       if (s.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
@@ -725,12 +851,16 @@
         currentStroke = null;
         return;
       }
+      pos.t = performance.now();
+      const pr0 = getPressure(e);
+      if (pr0 > 0) pos.pr = pr0;
       currentStroke = {
         points: [pos],
         color: strokeColor,
         width: strokeWidth,
         eraser: tool === 'eraser',
-        rainbow: tool === 'rainbow'
+        rainbow: tool === 'rainbow',
+        emaWidth: null
       };
     }
 
@@ -763,22 +893,61 @@
       if (!currentStroke) return;
       e.preventDefault();
       const pos = getPos(e);
-      currentStroke.points.push(pos);
+      const pts = currentStroke.points;
+      const last = pts[pts.length - 1];
 
+      // Minimum-distance thinning (world space): drop points too close to the
+      // previous one so high-frequency move events don't bloat the stroke.
+      const dx = pos.x - last.x;
+      const dy = pos.y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MIN_POINT_DIST) return;
+
+      const now = performance.now();
+      pos.t = now;
+      const pr = getPressure(e);
+      if (pr > 0) pos.pr = pr;
+
+      // Provisional per-point width for the live preview — mirrors the
+      // commit-time bake (computePointWidths) so the preview matches the
+      // committed render. Eraser stays uniform width.
+      if (!currentStroke.eraser) {
+        let target;
+        if (pr > 0) {
+          target = pressureToWidth(pr, currentStroke.width);
+        } else {
+          const dt = Math.max(1, now - (last.t || now));
+          target = speedToWidth(dist / dt, currentStroke.width);
+        }
+        currentStroke.emaWidth = currentStroke.emaWidth == null
+          ? target
+          : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * currentStroke.emaWidth);
+        pos.w = currentStroke.emaWidth;
+      }
+
+      pts.push(pos);
+
+      // Draw the newly-added smoothed segment incrementally. The quadratic
+      // midpoint method is causal, so the segment up to the previous midpoint
+      // is final; endDraw's redrawAll repaints the fully-smoothed stroke.
       const cos = Math.cos(rotation), sin = Math.sin(rotation);
       ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
+      const n = pts.length;
       ctx.beginPath();
-      const pts = currentStroke.points;
-      if (pts.length >= 2) {
-        ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
-        ctx.lineTo(pos.x, pos.y);
+      if (n === 2) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        const a = pts[n - 3], b = pts[n - 2], c = pts[n - 1];
+        ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+        ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2);
       }
       if (currentStroke.rainbow && !currentStroke.eraser) {
-        ctx.strokeStyle = rainbowColor(pts.length - 1);
+        ctx.strokeStyle = rainbowColor(n - 1);
       } else {
         ctx.strokeStyle = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       }
-      ctx.lineWidth = currentStroke.width;
+      ctx.lineWidth = currentStroke.eraser ? currentStroke.width : (pos.w || currentStroke.width);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       if (currentStroke.eraser) {
@@ -824,8 +993,23 @@
       if (!currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
+        // Bake the final per-point width from the captured speed/pressure, then
+        // persist only {x, y, w} (eraser stays uniform: {x, y}). Computing here
+        // keeps stored strokes self-describing — other clients and re-renders
+        // don't need the speed/pressure model.
+        let points;
+        if (currentStroke.eraser) {
+          points = currentStroke.points.map((p) => ({ x: p.x, y: p.y }));
+        } else {
+          computePointWidths(currentStroke.points, currentStroke.width);
+          points = currentStroke.points.map((p) => ({
+            x: p.x,
+            y: p.y,
+            w: Math.round(p.w * 10) / 10
+          }));
+        }
         const strokeData = {
-          points: currentStroke.points,
+          points: points,
           color: currentStroke.color,
           width: currentStroke.width,
           eraser: currentStroke.eraser,
@@ -839,9 +1023,19 @@
       }
       currentStroke = null;
       isDrawing = false;
+      redrawAll();
     }
 
     // --- Mouse event listeners ---
+
+    // Stylus pressure capture. Pointer events fire alongside mouse events; we
+    // only stash pressure for actual pens so the mouse path keeps using the
+    // speed model (getPressure returns this for non-touch input).
+    function trackPenPressure(e) {
+      penPressure = (e.pointerType === 'pen' && e.pressure > 0) ? e.pressure : 0;
+    }
+    canvas.addEventListener('pointerdown', trackPenPressure);
+    canvas.addEventListener('pointermove', trackPenPressure);
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.target.closest('.toolbar')) return;
