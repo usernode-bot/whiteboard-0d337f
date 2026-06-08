@@ -20,7 +20,7 @@ function broadcast(event, data) {
 
 const PUBLIC_API_PATHS = new Set(['/health']);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
@@ -39,7 +39,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/api/strokes', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, user_id, username, stroke_data, created_at FROM strokes ORDER BY created_at ASC, id ASC'
+      'SELECT id, user_id, username, stroke_data, z_index, created_at FROM strokes ORDER BY z_index ASC, id ASC'
     );
     res.json({ strokes: rows });
   } catch (err) {
@@ -61,21 +61,82 @@ app.get('/api/strokes/stream', (req, res) => {
 app.post('/api/strokes', async (req, res) => {
   try {
     const { stroke_data } = req.body;
+    // New layers land on top of the stack: next z_index above the current max.
     const { rows } = await pool.query(
-      'INSERT INTO strokes (user_id, username, stroke_data) VALUES ($1, $2, $3) RETURNING id, created_at',
+      `INSERT INTO strokes (user_id, username, stroke_data, z_index)
+       VALUES ($1, $2, $3, (SELECT COALESCE(MAX(z_index), 0) + 1 FROM strokes))
+       RETURNING id, z_index, created_at`,
       [req.user.id, req.user.username, JSON.stringify(stroke_data)]
     );
-    const result = { ok: true, id: rows[0].id, created_at: rows[0].created_at };
+    const result = { ok: true, id: rows[0].id, z_index: rows[0].z_index, created_at: rows[0].created_at };
     res.json(result);
-    broadcast('stroke', { id: rows[0].id, user_id: req.user.id, username: req.user.username, stroke_data, created_at: rows[0].created_at });
+    broadcast('stroke', {
+      id: rows[0].id,
+      user_id: req.user.id,
+      username: req.user.username,
+      stroke_data,
+      z_index: rows[0].z_index,
+      created_at: rows[0].created_at
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+// Update a layer's position (stroke_data) and/or z-order. Any collaborator
+// may edit any layer (shared board, matching clear-all). Last write wins.
+app.patch('/api/strokes/:id', async (req, res) => {
+  try {
+    const { stroke_data, z_index } = req.body;
+
+    let bringToFront = false;
+    let sendToBack = false;
+    let zValue = z_index;
+    // Allow symbolic z-order requests so clients don't need to know the
+    // current extremes. {z_index: 'front'} / 'back' resolve server-side.
+    if (z_index === 'front') { bringToFront = true; zValue = undefined; }
+    else if (z_index === 'back') { sendToBack = true; zValue = undefined; }
+
+    if (bringToFront) {
+      const { rows } = await pool.query('SELECT COALESCE(MAX(z_index), 0) + 1 AS z FROM strokes');
+      zValue = rows[0].z;
+    } else if (sendToBack) {
+      const { rows } = await pool.query('SELECT COALESCE(MIN(z_index), 0) - 1 AS z FROM strokes');
+      zValue = rows[0].z;
+    }
+
+    const sets = [];
+    const vals = [];
+    let i = 1;
+    if (stroke_data !== undefined) {
+      sets.push(`stroke_data = $${i++}`);
+      vals.push(JSON.stringify(stroke_data));
+    }
+    if (zValue !== undefined && zValue !== null) {
+      sets.push(`z_index = $${i++}`);
+      vals.push(zValue);
+    }
+    if (sets.length === 0) return res.status(400).json({ error: 'Nothing to update' });
+
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE strokes SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, stroke_data, z_index`,
+      vals
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    res.json({ ok: true, id: rows[0].id, z_index: rows[0].z_index });
+    broadcast('update', { id: rows[0].id, stroke_data: rows[0].stroke_data, z_index: rows[0].z_index });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete any layer (object eraser / select-tool delete). No ownership check —
+// the shared board lets anyone remove a layer, matching clear-all below.
 app.delete('/api/strokes/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM strokes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    await pool.query('DELETE FROM strokes WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
     broadcast('undo', { id: parseInt(req.params.id) });
   } catch (err) {
@@ -119,6 +180,13 @@ async function start() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Explicit z-order column. Reordering must persist independently of
+  // creation time, so we can't lean on created_at for stacking anymore.
+  await pool.query('ALTER TABLE strokes ADD COLUMN IF NOT EXISTS z_index INTEGER');
+  // Backfill existing rows so today's creation-order stacking is preserved
+  // exactly on first load (id is monotonic with creation order).
+  await pool.query('UPDATE strokes SET z_index = id WHERE z_index IS NULL');
+  await pool.query('CREATE INDEX IF NOT EXISTS strokes_z_idx ON strokes (z_index)');
   app.listen(port, () => console.log(`Listening on :${port}`));
 }
 
