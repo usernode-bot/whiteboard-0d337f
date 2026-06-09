@@ -171,10 +171,14 @@
     <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
     </button>
-    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
+    <label id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg cursor-pointer" title="Insert image">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-    </button>
-    <input type="file" id="image-input" accept="image/*" class="hidden">
+      <!-- Input nested inside the label: tapping the label natively opens the
+           OS file picker within the user gesture. Visually hidden (not
+           display:none) so iOS Safari / Android Chrome still trigger it. -->
+      <input type="file" id="image-input" accept="image/*"
+             style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none;">
+    </label>
 
     <div class="relative">
       <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
@@ -353,16 +357,27 @@
     let layerMoved = false;
     // Image resize-handle state (select tool).
     let isResizingLayer = false;
-    let resizeCorner = -1;
+    let resizeDef = null;           // active handle descriptor (see HANDLE_DEFS)
     let resizeAnchor = { x: 0, y: 0 };
-    let resizeAnchorRight = false;
-    let resizeAnchorBottom = false;
-    let resizeOrig = { w: 0, h: 0 };
+    let resizeOrig = { w: 0, h: 0, x: 0, y: 0 };
     let resizeBefore = null;
     let resizeChanged = false;
-    const RESIZE_HANDLE_R = 5;      // dot radius (screen px)
-    const RESIZE_HIT_R = 16;        // grab tolerance (screen px)
+    const RESIZE_HANDLE_R = 6;      // dot radius (screen px)
+    const RESIZE_HIT_R = 20;        // grab tolerance (screen px, finger-friendly)
     const MIN_IMAGE_PX = 16;        // smallest world size while resizing
+    // 8 handles: 4 corners (aspect-locked) + 4 side midpoints (single axis).
+    // ax/ay: which dimension this handle resizes. anchorRight/anchorBottom:
+    // which edge stays pinned. corner: lock aspect ratio. cursor: hover cue.
+    const HANDLE_DEFS = [
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: true,  corner: true,  cursor: 'nwse-resize' }, // 0 TL
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: true,  corner: true,  cursor: 'nesw-resize' }, // 1 TR
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: false, corner: true,  cursor: 'nwse-resize' }, // 2 BR
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: false, corner: true,  cursor: 'nesw-resize' }, // 3 BL
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: true,  corner: false, cursor: 'ns-resize' },   // 4 top mid
+      { ax: 1, ay: 0, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ew-resize' },   // 5 right mid
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ns-resize' },   // 6 bottom mid
+      { ax: 1, ay: 0, anchorRight: true,  anchorBottom: false, corner: false, cursor: 'ew-resize' }    // 7 left mid
+    ];
     let isErasing = false;
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
@@ -758,43 +773,52 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Images get draggable corner dots so they can be scaled.
+      // Images get 8 draggable handles (4 corners + 4 side midpoints) so they
+      // can be scaled. High-contrast (purple fill, white ring) to stay visible
+      // on any background.
       if (item.type === 'image') {
-        for (const c of corners) {
-          ctx.beginPath();
-          ctx.arc(c.x, c.y, RESIZE_HANDLE_R, 0, Math.PI * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = '#7c3aed';
-          ctx.stroke();
+        const handles = getSelectedImageHandles();
+        if (handles) {
+          for (const c of handles) {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, RESIZE_HANDLE_R, 0, Math.PI * 2);
+            ctx.fillStyle = '#7c3aed';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+          }
         }
       }
     }
 
-    // Screen-space corners [TL,TR,BR,BL] of the selected image, or null.
-    function getSelectedImageCorners() {
+    // Screen-space positions of all 8 handles for the selected image, in the
+    // index order [TL,TR,BR,BL, top, right, bottom, left], or null.
+    function getSelectedImageHandles() {
       if (!selectedLayer) return null;
       const item = selectedLayer.stroke_data || selectedLayer;
       if (item.type !== 'image') return null;
       const b = getLayerBBox(item);
       if (!b) return null;
-      return [
-        worldToScreen(b.minX, b.minY),
-        worldToScreen(b.maxX, b.minY),
-        worldToScreen(b.maxX, b.maxY),
-        worldToScreen(b.minX, b.maxY)
-      ];
+      const tl = worldToScreen(b.minX, b.minY);
+      const tr = worldToScreen(b.maxX, b.minY);
+      const br = worldToScreen(b.maxX, b.maxY);
+      const bl = worldToScreen(b.minX, b.maxY);
+      const mid = (a, c) => ({ x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 });
+      return [tl, tr, br, bl, mid(tl, tr), mid(tr, br), mid(br, bl), mid(bl, tl)];
     }
 
-    // Which corner handle (0=TL,1=TR,2=BR,3=BL) is under a screen point, or -1.
+    // Index (0..7) of the handle under a screen point, or -1. Nearest wins so
+    // adjacent corner/side hit-zones don't fight.
     function hitResizeHandle(sx, sy) {
-      const corners = getSelectedImageCorners();
-      if (!corners) return -1;
-      for (let i = 0; i < 4; i++) {
-        if (Math.hypot(corners[i].x - sx, corners[i].y - sy) <= RESIZE_HIT_R) return i;
+      const handles = getSelectedImageHandles();
+      if (!handles) return -1;
+      let best = -1, bestD = RESIZE_HIT_R;
+      for (let i = 0; i < handles.length; i++) {
+        const d = Math.hypot(handles[i].x - sx, handles[i].y - sy);
+        if (d <= bestD) { bestD = d; best = i; }
       }
-      return -1;
+      return best;
     }
 
     // --- Selection / layer manipulation ---
@@ -878,52 +902,57 @@
       }
     }
 
-    // Start scaling the selected image by dragging corner `corner`.
+    // Start scaling the selected image by dragging handle `handle` (0..7).
     // We bake any pending dx/dy translation into x/y so resize math works in
-    // a single coordinate frame, and pin the diagonally-opposite corner.
-    function beginResize(corner, pos) {
+    // a single coordinate frame, and pin the edge/corner opposite the handle.
+    function beginResize(handle, pos) {
       if (!selectedLayer) return;
       const sd = selectedLayer.stroke_data || selectedLayer;
       if (sd.type !== 'image') return;
+      const def = HANDLE_DEFS[handle];
+      if (!def) return;
       // Normalize the legacy {width,height} shape to {w,h}.
       if (sd.w == null && sd.width != null) { sd.w = sd.width; sd.h = sd.height; }
       isResizingLayer = true;
-      resizeCorner = corner;
+      resizeDef = def;
       resizeChanged = false;
       resizeBefore = { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 };
       // Fold translation into position.
       sd.x = sd.x + (sd.dx || 0);
       sd.y = sd.y + (sd.dy || 0);
       sd.dx = 0; sd.dy = 0;
-      resizeOrig = { w: sd.w, h: sd.h };
-      // Anchor = opposite corner. corner: 0 TL,1 TR,2 BR,3 BL.
-      resizeAnchorRight = (corner === 0 || corner === 3);   // anchor on the right
-      resizeAnchorBottom = (corner === 0 || corner === 1);  // anchor on the bottom
+      resizeOrig = { w: sd.w, h: sd.h, x: sd.x, y: sd.y };
+      // Pinned edge stays fixed in world space.
       resizeAnchor = {
-        x: resizeAnchorRight ? sd.x + sd.w : sd.x,
-        y: resizeAnchorBottom ? sd.y + sd.h : sd.y
+        x: def.anchorRight ? sd.x + sd.w : sd.x,
+        y: def.anchorBottom ? sd.y + sd.h : sd.y
       };
     }
 
     function updateResize(pos) {
-      if (!isResizingLayer || !selectedLayer) return;
+      if (!isResizingLayer || !selectedLayer || !resizeDef) return;
       const sd = selectedLayer.stroke_data || selectedLayer;
-      const aspect = resizeOrig.w / resizeOrig.h;
-      let newW = Math.abs(pos.x - resizeAnchor.x);
-      let newH = Math.abs(pos.y - resizeAnchor.y);
-      // Lock aspect ratio: follow whichever axis the pointer moved further on.
-      const f = Math.max(newW / resizeOrig.w, newH / resizeOrig.h);
-      newW = resizeOrig.w * f;
-      newH = resizeOrig.h * f;
-      // Enforce a minimum so the image can't collapse to nothing.
-      if (newW < MIN_IMAGE_PX || newH < MIN_IMAGE_PX) {
-        if (aspect >= 1) { newW = MIN_IMAGE_PX * aspect; newH = MIN_IMAGE_PX; }
-        else { newW = MIN_IMAGE_PX; newH = MIN_IMAGE_PX / aspect; }
+      const def = resizeDef;
+      let newW = resizeOrig.w;
+      let newH = resizeOrig.h;
+      if (def.corner) {
+        // Corner: lock aspect, follow whichever axis the pointer moved further.
+        const pw = Math.abs(pos.x - resizeAnchor.x);
+        const ph = Math.abs(pos.y - resizeAnchor.y);
+        let f = Math.max(pw / resizeOrig.w, ph / resizeOrig.h);
+        const fMin = Math.max(MIN_IMAGE_PX / resizeOrig.w, MIN_IMAGE_PX / resizeOrig.h);
+        f = Math.max(f, fMin);
+        newW = resizeOrig.w * f;
+        newH = resizeOrig.h * f;
+      } else {
+        // Side midpoint: resize the single axis this handle controls.
+        if (def.ax) newW = Math.max(MIN_IMAGE_PX, Math.abs(pos.x - resizeAnchor.x));
+        if (def.ay) newH = Math.max(MIN_IMAGE_PX, Math.abs(pos.y - resizeAnchor.y));
       }
       sd.w = newW;
       sd.h = newH;
-      sd.x = resizeAnchorRight ? resizeAnchor.x - newW : resizeAnchor.x;
-      sd.y = resizeAnchorBottom ? resizeAnchor.y - newH : resizeAnchor.y;
+      sd.x = def.anchorRight ? resizeAnchor.x - newW : resizeAnchor.x;
+      sd.y = def.anchorBottom ? resizeAnchor.y - newH : resizeAnchor.y;
       resizeChanged = true;
       redrawAll();
     }
@@ -931,7 +960,7 @@
     function endResize() {
       if (!isResizingLayer) return;
       isResizingLayer = false;
-      resizeCorner = -1;
+      resizeDef = null;
       if (resizeChanged && selectedLayer && resizeBefore) {
         const sd = selectedLayer.stroke_data || selectedLayer;
         recordAction({
@@ -1412,10 +1441,8 @@
       }
       // Hover feedback over resize handles of a selected image.
       if (tool === 'select') {
-        const corner = hitResizeHandle(e.clientX, e.clientY);
-        canvas.style.cursor = corner === 1 || corner === 3 ? 'nesw-resize'
-          : corner === 0 || corner === 2 ? 'nwse-resize'
-          : 'default';
+        const h = hitResizeHandle(e.clientX, e.clientY);
+        canvas.style.cursor = h !== -1 ? HANDLE_DEFS[h].cursor : 'default';
       }
       if (isErasing) {
         eraseAt(getPos(e));
@@ -1691,9 +1718,11 @@
     document.getElementById('btn-back').addEventListener('click', () => reorderSelected('back'));
     document.getElementById('btn-delete-layer').addEventListener('click', () => deleteSelected());
 
-    // Image insert — file picker, downscale, place centered in current view
+    // Image insert — file picker, downscale, place centered in current view.
+    // The picker is opened by the native <label for> association (see the
+    // #btn-image label in the toolbar), which is far more reliable on mobile
+    // than a JS-proxied input.click(). We only handle the resulting change.
     const imageInput = document.getElementById('image-input');
-    document.getElementById('btn-image').addEventListener('click', () => imageInput.click());
     imageInput.addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (file) insertImageFile(file);
@@ -1724,10 +1753,14 @@
           const item = { type: 'image', src, x: center.x - worldW / 2, y: center.y - worldH / 2, w: worldW, h: worldH, dx: 0, dy: 0 };
           saveStroke(item).then((saved) => {
             if (saved) {
-              strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index });
+              const layer = { id: saved.id, stroke_data: item, z_index: saved.z_index };
+              strokes.push(layer);
               recordAction({ type: 'add', id: saved.id, data: item });
               sortStrokes();
-              redrawAll();
+              // Drop into select mode with the new image selected so its
+              // resize handles are immediately visible and usable.
+              setActiveTool('select');
+              selectLayer(layer);
             }
           });
         };
