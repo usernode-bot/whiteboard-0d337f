@@ -148,7 +148,6 @@
   <div id="brush-cursor"></div>
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
-  <input type="file" id="image-file-input" accept="image/*" style="display:none">
 
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
@@ -352,6 +351,18 @@
     let dragOrigDx = 0;
     let dragOrigDy = 0;
     let layerMoved = false;
+    // Image resize-handle state (select tool).
+    let isResizingLayer = false;
+    let resizeCorner = -1;
+    let resizeAnchor = { x: 0, y: 0 };
+    let resizeAnchorRight = false;
+    let resizeAnchorBottom = false;
+    let resizeOrig = { w: 0, h: 0 };
+    let resizeBefore = null;
+    let resizeChanged = false;
+    const RESIZE_HANDLE_R = 5;      // dot radius (screen px)
+    const RESIZE_HIT_R = 16;        // grab tolerance (screen px)
+    const MIN_IMAGE_PX = 16;        // smallest world size while resizing
     let isErasing = false;
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
@@ -558,10 +569,16 @@
     }
 
     function drawImageItem(item) {
-      const img = getImage(item.src);
+      // Tolerate the legacy {dataUrl,width,height} shape as well as the
+      // canonical {src,w,h} layer shape.
+      const src = item.src || item.dataUrl;
+      const w = item.w != null ? item.w : item.width;
+      const h = item.h != null ? item.h : item.height;
+      if (!src) return;
+      const img = getImage(src);
       if (img.complete && img.naturalWidth) {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(img, item.x, item.y, item.w, item.h);
+        ctx.drawImage(img, item.x, item.y, w, h);
       }
     }
 
@@ -688,7 +705,9 @@
         return { minX: item.x + dx - h, minY: item.y + dy - h, maxX: item.x + dx + h, maxY: item.y + dy + h };
       }
       if (item.type === 'image') {
-        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + item.w, maxY: item.y + dy + item.h };
+        const w = item.w != null ? item.w : item.width;
+        const h = item.h != null ? item.h : item.height;
+        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + w, maxY: item.y + dy + h };
       }
       if (item.points && item.points.length) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -738,6 +757,44 @@
       ctx.closePath();
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Images get draggable corner dots so they can be scaled.
+      if (item.type === 'image') {
+        for (const c of corners) {
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, RESIZE_HANDLE_R, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = '#7c3aed';
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Screen-space corners [TL,TR,BR,BL] of the selected image, or null.
+    function getSelectedImageCorners() {
+      if (!selectedLayer) return null;
+      const item = selectedLayer.stroke_data || selectedLayer;
+      if (item.type !== 'image') return null;
+      const b = getLayerBBox(item);
+      if (!b) return null;
+      return [
+        worldToScreen(b.minX, b.minY),
+        worldToScreen(b.maxX, b.minY),
+        worldToScreen(b.maxX, b.maxY),
+        worldToScreen(b.minX, b.maxY)
+      ];
+    }
+
+    // Which corner handle (0=TL,1=TR,2=BR,3=BL) is under a screen point, or -1.
+    function hitResizeHandle(sx, sy) {
+      const corners = getSelectedImageCorners();
+      if (!corners) return -1;
+      for (let i = 0; i < 4; i++) {
+        if (Math.hypot(corners[i].x - sx, corners[i].y - sy) <= RESIZE_HIT_R) return i;
+      }
+      return -1;
     }
 
     // --- Selection / layer manipulation ---
@@ -821,6 +878,73 @@
       }
     }
 
+    // Start scaling the selected image by dragging corner `corner`.
+    // We bake any pending dx/dy translation into x/y so resize math works in
+    // a single coordinate frame, and pin the diagonally-opposite corner.
+    function beginResize(corner, pos) {
+      if (!selectedLayer) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      if (sd.type !== 'image') return;
+      // Normalize the legacy {width,height} shape to {w,h}.
+      if (sd.w == null && sd.width != null) { sd.w = sd.width; sd.h = sd.height; }
+      isResizingLayer = true;
+      resizeCorner = corner;
+      resizeChanged = false;
+      resizeBefore = { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 };
+      // Fold translation into position.
+      sd.x = sd.x + (sd.dx || 0);
+      sd.y = sd.y + (sd.dy || 0);
+      sd.dx = 0; sd.dy = 0;
+      resizeOrig = { w: sd.w, h: sd.h };
+      // Anchor = opposite corner. corner: 0 TL,1 TR,2 BR,3 BL.
+      resizeAnchorRight = (corner === 0 || corner === 3);   // anchor on the right
+      resizeAnchorBottom = (corner === 0 || corner === 1);  // anchor on the bottom
+      resizeAnchor = {
+        x: resizeAnchorRight ? sd.x + sd.w : sd.x,
+        y: resizeAnchorBottom ? sd.y + sd.h : sd.y
+      };
+    }
+
+    function updateResize(pos) {
+      if (!isResizingLayer || !selectedLayer) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      const aspect = resizeOrig.w / resizeOrig.h;
+      let newW = Math.abs(pos.x - resizeAnchor.x);
+      let newH = Math.abs(pos.y - resizeAnchor.y);
+      // Lock aspect ratio: follow whichever axis the pointer moved further on.
+      const f = Math.max(newW / resizeOrig.w, newH / resizeOrig.h);
+      newW = resizeOrig.w * f;
+      newH = resizeOrig.h * f;
+      // Enforce a minimum so the image can't collapse to nothing.
+      if (newW < MIN_IMAGE_PX || newH < MIN_IMAGE_PX) {
+        if (aspect >= 1) { newW = MIN_IMAGE_PX * aspect; newH = MIN_IMAGE_PX; }
+        else { newW = MIN_IMAGE_PX; newH = MIN_IMAGE_PX / aspect; }
+      }
+      sd.w = newW;
+      sd.h = newH;
+      sd.x = resizeAnchorRight ? resizeAnchor.x - newW : resizeAnchor.x;
+      sd.y = resizeAnchorBottom ? resizeAnchor.y - newH : resizeAnchor.y;
+      resizeChanged = true;
+      redrawAll();
+    }
+
+    function endResize() {
+      if (!isResizingLayer) return;
+      isResizingLayer = false;
+      resizeCorner = -1;
+      if (resizeChanged && selectedLayer && resizeBefore) {
+        const sd = selectedLayer.stroke_data || selectedLayer;
+        recordAction({
+          type: 'resize',
+          id: selectedLayer.id,
+          before: resizeBefore,
+          after: { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 }
+        });
+        patchLayer(selectedLayer.id, { stroke_data: sd });
+      }
+      resizeBefore = null;
+    }
+
     function eraseAt(pos) {
       const hit = hitTest(pos.x, pos.y);
       if (hit) {
@@ -886,7 +1010,20 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.before);
       }
+    }
+
+    // Restore a saved image geometry snapshot {x,y,w,h,dx,dy}.
+    function applyGeometry(id, g) {
+      const l = findLayer(id);
+      if (!l) return;
+      const sd = l.stroke_data || l;
+      sd.x = g.x; sd.y = g.y; sd.w = g.w; sd.h = g.h;
+      sd.dx = g.dx || 0; sd.dy = g.dy || 0;
+      patchLayer(id, { stroke_data: sd });
+      redrawAll();
     }
 
     async function applyRedo(a) {
@@ -910,6 +1047,8 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.after);
       }
     }
 
@@ -923,6 +1062,13 @@
         sy = e.clientY;
       }
       return screenToWorld(sx, sy);
+    }
+
+    function getScreenPos(e) {
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
     }
 
     function zoomAtPoint(cx, cy, newScale) {
@@ -1218,9 +1364,12 @@
         openTextInput(e.clientX, e.clientY);
         return;
       }
-      // Select tool: pick / start dragging a layer
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select' && e.button === 0) {
         e.preventDefault();
+        const sp = getScreenPos(e);
+        const corner = hitResizeHandle(sp.x, sp.y);
+        if (corner !== -1) { beginResize(corner, getPos(e)); return; }
         beginLayerDrag(getPos(e));
         return;
       }
@@ -1253,9 +1402,20 @@
         redrawAll();
         return;
       }
+      if (isResizingLayer) {
+        updateResize(getPos(e));
+        return;
+      }
       if (isDraggingLayer) {
         updateLayerDrag(getPos(e));
         return;
+      }
+      // Hover feedback over resize handles of a selected image.
+      if (tool === 'select') {
+        const corner = hitResizeHandle(e.clientX, e.clientY);
+        canvas.style.cursor = corner === 1 || corner === 3 ? 'nesw-resize'
+          : corner === 0 || corner === 2 ? 'nwse-resize'
+          : 'default';
       }
       if (isErasing) {
         eraseAt(getPos(e));
@@ -1270,6 +1430,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -1282,6 +1443,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -1384,10 +1546,15 @@
         return;
       }
 
-      // Select tool: pick / start dragging a layer
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select') {
         e.preventDefault();
-        if (e.touches.length === 1) beginLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          const sp = getScreenPos(e);
+          const corner = hitResizeHandle(sp.x, sp.y);
+          if (corner !== -1) beginResize(corner, getPos(e));
+          else beginLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -1452,7 +1619,10 @@
 
       if (tool === 'select') {
         e.preventDefault();
-        if (isDraggingLayer && e.touches.length === 1) updateLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          if (isResizingLayer) updateResize(getPos(e));
+          else if (isDraggingLayer) updateLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -1480,7 +1650,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -1497,7 +1667,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -1575,67 +1745,6 @@
       }
     });
 
-    document.getElementById('btn-image').addEventListener('click', () => {
-      document.getElementById('image-file-input').click();
-    });
-
-    document.getElementById('image-file-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onerror = () => URL.revokeObjectURL(objectUrl);
-      img.onload = async () => {
-        URL.revokeObjectURL(objectUrl);
-
-        const MAX_PX = 600;
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        if (w > MAX_PX || h > MAX_PX) {
-          if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
-          else { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
-        }
-
-        const offscreen = document.createElement('canvas');
-        offscreen.width = w;
-        offscreen.height = h;
-        offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
-
-        const dataUrl = offscreen.toDataURL(
-          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          0.85
-        );
-
-        const MAX_WORLD = 400;
-        let worldW = w;
-        let worldH = h;
-        if (worldW > MAX_WORLD || worldH > MAX_WORLD) {
-          if (worldW >= worldH) { worldH = Math.round(worldH * MAX_WORLD / worldW); worldW = MAX_WORLD; }
-          else { worldW = Math.round(worldW * MAX_WORLD / worldH); worldH = MAX_WORLD; }
-        }
-
-        const viewCentreX = (canvas.width / 2 - offsetX) / scale;
-        const viewCentreY = (canvas.height / 2 - offsetY) / scale;
-        const strokeData = {
-          type: 'image',
-          x: viewCentreX - worldW / 2,
-          y: viewCentreY - worldH / 2,
-          width: worldW,
-          height: worldH,
-          dataUrl
-        };
-
-        const saved = await saveStroke(strokeData);
-        if (saved) {
-          strokes.push({ id: saved.id, stroke_data: strokeData });
-          redoStack = [];
-          redrawAll();
-        }
-      };
-      img.src = objectUrl;
-    });
     buildEmojiPicker();
 
     // --- Shapes tool wiring ---
