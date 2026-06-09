@@ -285,6 +285,29 @@
     <div class="grid grid-cols-8 gap-1"></div>
   </div>
 
+  <div id="text-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56">
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Text</p>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Font</label>
+    <select id="text-font-family" class="w-full mb-3 px-2 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
+      <option value="sans-serif" style="font-family:sans-serif">Sans-serif</option>
+      <option value="serif" style="font-family:serif">Serif</option>
+      <option value="monospace" style="font-family:monospace">Monospace</option>
+      <option value="cursive" style="font-family:cursive">Handwriting</option>
+      <option value="Arial, sans-serif" style="font-family:Arial,sans-serif">Arial</option>
+      <option value="Georgia, serif" style="font-family:Georgia,serif">Georgia</option>
+      <option value="'Courier New', monospace" style="font-family:'Courier New',monospace">Courier</option>
+      <option value="'Comic Sans MS', cursive" style="font-family:'Comic Sans MS',cursive">Comic</option>
+    </select>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Size</label>
+    <div class="flex items-center gap-2">
+      <input id="text-size-slider" type="range" min="8" max="200" step="1" value="24" class="flex-1">
+      <div class="flex items-center gap-0.5">
+        <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
+        <span class="text-xs text-zinc-400 dark:text-zinc-500">px</span>
+      </div>
+    </div>
+  </div>
+
   <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
     100%
   </div>
@@ -428,6 +451,10 @@
     // Text tool state
     let pendingTextX = 0;
     let pendingTextY = 0;
+    // Font styling for newly placed text. Decoupled from the brush Size slider:
+    // text size is governed solely by the text tool pop-up's size control.
+    let textFontFamily = 'sans-serif';
+    let textFontSize = 24;
 
     // Rainbow brush: hue advances this many degrees per recorded point.
     const RAINBOW_HUE_STEP = 8;
@@ -723,7 +750,7 @@
 
     function drawStroke(s) {
       if (s.type === 'text') {
-        ctx.font = s.fontSize + 'px sans-serif';
+        ctx.font = s.fontSize + 'px ' + (s.fontFamily || 'sans-serif');
         ctx.fillStyle = s.color;
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillText(s.text, s.x, s.y);
@@ -1099,6 +1126,7 @@
       document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
       if (newTool !== 'emoji') hideEmojiPicker();
       if (newTool !== 'shape') hideShapesPopover();
+      if (newTool !== 'text') hideTextPopover(); else showTextPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
@@ -1706,7 +1734,15 @@
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
-    document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
+    document.getElementById('btn-text').addEventListener('click', () => {
+      // Re-clicking while already on the text tool toggles the options pop-up.
+      if (tool === 'text') {
+        const tp = document.getElementById('text-popover');
+        if (tp.classList.contains('hidden')) showTextPopover(); else hideTextPopover();
+      } else {
+        setActiveTool('text');
+      }
+    });
     document.getElementById('btn-select').addEventListener('click', () => setActiveTool('select'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
 
@@ -1943,6 +1979,90 @@
       updateBrushCursor();
     });
 
+    // --- Text tool options pop-up (font family + size) ---
+    const TEXT_SIZE_MIN = 8;
+    const TEXT_SIZE_MAX = 200;
+    const btnText = document.getElementById('btn-text');
+    const textPopover = document.getElementById('text-popover');
+    const textFontSelect = document.getElementById('text-font-family');
+    const textSizeSlider = document.getElementById('text-size-slider');
+    const textSizeInput = document.getElementById('text-size-input');
+
+    function clampTextSize(n) {
+      if (!Number.isFinite(n)) return textFontSize;
+      return Math.min(TEXT_SIZE_MAX, Math.max(TEXT_SIZE_MIN, Math.round(n)));
+    }
+
+    function showTextPopover() {
+      const rect = btnText.getBoundingClientRect();
+      textPopover.style.top = (rect.bottom + 8) + 'px';
+      const left = Math.min(rect.left, window.innerWidth - 240);
+      textPopover.style.left = Math.max(4, left) + 'px';
+      textPopover.classList.remove('hidden');
+    }
+
+    function hideTextPopover() {
+      textPopover.classList.add('hidden');
+    }
+
+    // Reflect the chosen size/family onto a text input that is currently open.
+    function applyTextStyleToOpenInput() {
+      if (textInputEl.style.display === 'none') return;
+      const screenFontSize = textFontSize * scale;
+      textInputEl.style.fontSize = screenFontSize + 'px';
+      textInputEl.style.fontFamily = textFontFamily;
+      textMeasureEl.style.fontSize = screenFontSize + 'px';
+      textMeasureEl.style.fontFamily = textFontFamily;
+      textMeasureEl.textContent = textInputEl.value || '';
+      textInputEl.style.width = Math.max(4, textMeasureEl.offsetWidth + 4) + 'px';
+    }
+
+    function setTextFontSize(n, opts) {
+      opts = opts || {};
+      textFontSize = clampTextSize(n);
+      if (!opts.skipSlider) textSizeSlider.value = textFontSize;
+      if (!opts.skipInput) textSizeInput.value = textFontSize;
+      applyTextStyleToOpenInput();
+    }
+
+    // Initialize controls from defaults.
+    textFontSelect.value = textFontFamily;
+    textSizeSlider.value = textFontSize;
+    textSizeInput.value = textFontSize;
+
+    textFontSelect.addEventListener('change', (e) => {
+      textFontFamily = e.target.value;
+      applyTextStyleToOpenInput();
+    });
+
+    textSizeSlider.addEventListener('input', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10), { skipSlider: true });
+    });
+
+    // While typing, stay lenient (allow empty/partial); commit-clamp on change/blur.
+    textSizeInput.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (!Number.isFinite(v)) return;
+      setTextFontSize(v, { skipInput: true });
+    });
+    textSizeInput.addEventListener('change', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+    textSizeInput.addEventListener('blur', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+
+    // Close on outside mousedown, but never when interacting with the pop-up,
+    // the text button, or the live text input (so editing options mid-type works).
+    document.addEventListener('mousedown', (e) => {
+      if (!textPopover.classList.contains('hidden') &&
+          !textPopover.contains(e.target) &&
+          !btnText.contains(e.target) &&
+          !textInputEl.contains(e.target)) {
+        hideTextPopover();
+      }
+    });
+
     document.getElementById('btn-undo').addEventListener('click', async () => {
       if (undoStack.length === 0) return;
       const a = undoStack.pop();
@@ -2128,8 +2248,9 @@
       const worldPos = screenToWorld(screenX, screenY);
       pendingTextX = worldPos.x;
       pendingTextY = worldPos.y;
-      const screenFontSize = strokeWidth * 5 * scale;
+      const screenFontSize = textFontSize * scale;
       textInput.style.fontSize = screenFontSize + 'px';
+      textInput.style.fontFamily = textFontFamily;
       textInput.style.color = strokeColor;
       textInput.style.left = screenX + 'px';
       textInput.style.top = (screenY - screenFontSize * 0.8) + 'px';
@@ -2137,6 +2258,7 @@
       textInput.value = '';
       textInput.style.display = 'block';
       measure.style.fontSize = screenFontSize + 'px';
+      measure.style.fontFamily = textFontFamily;
       textInput.focus();
     }
 
@@ -2153,7 +2275,8 @@
         y: pendingTextY,
         text: text,
         color: strokeColor,
-        fontSize: strokeWidth * 5,
+        fontSize: textFontSize,
+        fontFamily: textFontFamily,
         dx: 0,
         dy: 0
       };
