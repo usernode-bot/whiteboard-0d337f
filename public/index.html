@@ -272,9 +272,9 @@
     </button>
   </div>
 
-  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56 max-h-[70vh] overflow-y-auto">
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
-    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+    <div id="color-swatches" class="grid grid-cols-6 gap-1.5 mb-2"></div>
     <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
@@ -1682,9 +1682,26 @@
     // Color palette button + popover
     (function initColorPalette() {
       const COLOR_SWATCHES = [
-        '#1c1917', '#6b7280', '#ffffff', '#ef4444',
-        '#f97316', '#eab308', '#22c55e', '#3b82f6',
-        '#8b5cf6', '#ec4899', '#14b8a6', '#92400e'
+        // Neutrals: black → white
+        '#000000', '#1c1917', '#44403c', '#6b7280', '#a1a1aa', '#ffffff',
+        // Reds
+        '#7f1d1d', '#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fecaca',
+        // Oranges & ambers
+        '#9a3412', '#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa',
+        // Yellows
+        '#a16207', '#ca8a04', '#eab308', '#facc15', '#fde047', '#fef08a',
+        // Greens
+        '#166534', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0',
+        // Teals & cyans
+        '#115e59', '#0d9488', '#14b8a6', '#06b6d4', '#22d3ee', '#a5f3fc',
+        // Blues
+        '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe',
+        // Indigos & violets
+        '#3730a3', '#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe',
+        // Pinks & magentas
+        '#9d174d', '#db2777', '#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8',
+        // Browns & earth tones
+        '#451a03', '#78350f', '#92400e', '#b45309', '#d97706', '#fcd34d'
       ];
 
       const swatchWrap = document.getElementById('color-swatches');
@@ -1693,7 +1710,7 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.className = 'w-6 h-6 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
         sw.addEventListener('click', () => {
           setStrokeColor(color);
           document.getElementById('color-popover').classList.add('hidden');
@@ -1708,7 +1725,7 @@
       function openColorPopover() {
         const rect = btnColor.getBoundingClientRect();
         colorPopover.style.top = (rect.bottom + 8) + 'px';
-        const left = Math.min(rect.left, window.innerWidth - 184);
+        const left = Math.min(rect.left, window.innerWidth - 232);
         colorPopover.style.left = Math.max(4, left) + 'px';
         colorPopover.classList.remove('hidden');
       }
