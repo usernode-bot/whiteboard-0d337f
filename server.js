@@ -176,6 +176,109 @@ app.delete('/api/strokes', async (req, res) => {
   }
 });
 
+// --- Comment threads ---
+
+// All threads with their replies. Threads ordered oldest-first; each thread's
+// replies ordered oldest-first (the first reply is the opening comment).
+app.get('/api/threads', async (req, res) => {
+  try {
+    const threadsQ = await pool.query(
+      'SELECT id, user_id, username, x, y, anchor_stroke_id, anchor_dx, anchor_dy, created_at FROM comment_threads ORDER BY created_at ASC, id ASC'
+    );
+    const repliesQ = await pool.query(
+      'SELECT id, thread_id, user_id, username, body, created_at FROM comment_replies ORDER BY created_at ASC, id ASC'
+    );
+    const byThread = new Map();
+    for (const r of repliesQ.rows) {
+      if (!byThread.has(r.thread_id)) byThread.set(r.thread_id, []);
+      byThread.get(r.thread_id).push(r);
+    }
+    const threads = threadsQ.rows.map(t => ({ ...t, replies: byThread.get(t.id) || [] }));
+    res.json({ threads });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/threads', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { x, y, anchor_stroke_id, anchor_dx, anchor_dy, body } = req.body;
+    if (typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'Comment body is required' });
+    }
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      return res.status(400).json({ error: 'x and y are required' });
+    }
+    await client.query('BEGIN');
+    const threadQ = await client.query(
+      `INSERT INTO comment_threads (user_id, username, x, y, anchor_stroke_id, anchor_dx, anchor_dy)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, user_id, username, x, y, anchor_stroke_id, anchor_dx, anchor_dy, created_at`,
+      [
+        req.user.id, req.user.username, x, y,
+        anchor_stroke_id != null ? anchor_stroke_id : null,
+        anchor_dx != null ? anchor_dx : null,
+        anchor_dy != null ? anchor_dy : null
+      ]
+    );
+    const thread = threadQ.rows[0];
+    const replyQ = await client.query(
+      `INSERT INTO comment_replies (thread_id, user_id, username, body)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, thread_id, user_id, username, body, created_at`,
+      [thread.id, req.user.id, req.user.username, body.trim()]
+    );
+    await client.query('COMMIT');
+    const full = { ...thread, replies: [replyQ.rows[0]] };
+    res.json(full);
+    broadcast('thread', full);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/threads/:id/replies', async (req, res) => {
+  try {
+    const { body } = req.body;
+    if (typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'Reply body is required' });
+    }
+    const exists = await pool.query('SELECT id FROM comment_threads WHERE id = $1', [req.params.id]);
+    if (exists.rowCount === 0) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO comment_replies (thread_id, user_id, username, body)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, thread_id, user_id, username, body, created_at`,
+      [req.params.id, req.user.id, req.user.username, body.trim()]
+    );
+    res.json(rows[0]);
+    broadcast('reply', rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/threads/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM comment_threads WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    res.json({ ok: true, deleted: result.rowCount });
+    if (result.rowCount > 0) {
+      broadcast('thread-delete', { id: parseInt(req.params.id) });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => {
@@ -209,6 +312,32 @@ async function start() {
   // exactly on first load (id is monotonic with creation order).
   await pool.query('UPDATE strokes SET z_index = id WHERE z_index IS NULL');
   await pool.query('CREATE INDEX IF NOT EXISTS strokes_z_idx ON strokes (z_index)');
+  // Comment threads pinned to world coordinates, optionally anchored to a
+  // stroke. ON DELETE SET NULL detaches a thread when its stroke is removed
+  // (undo / clear) without deleting the conversation.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS comment_threads (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      x DOUBLE PRECISION NOT NULL,
+      y DOUBLE PRECISION NOT NULL,
+      anchor_stroke_id INTEGER REFERENCES strokes(id) ON DELETE SET NULL,
+      anchor_dx DOUBLE PRECISION,
+      anchor_dy DOUBLE PRECISION,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS comment_replies (
+      id SERIAL PRIMARY KEY,
+      thread_id INTEGER NOT NULL REFERENCES comment_threads(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
   app.listen(port, () => console.log(`Listening on :${port}`));
 }
 
