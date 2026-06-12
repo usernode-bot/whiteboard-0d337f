@@ -149,6 +149,41 @@
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
 
+  <!-- Comment pins overlay: pins track world coords but keep a fixed screen size. -->
+  <div id="pin-layer" class="fixed inset-0 z-40" style="pointer-events:none"></div>
+
+  <!-- Composer for a brand-new thread -->
+  <div id="comment-composer" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-xl z-[70] w-64">
+    <p id="composer-attach-note" class="text-xs text-zinc-400 dark:text-zinc-500 mb-2 hidden">📌 Attached to an element</p>
+    <textarea id="composer-text" rows="3" placeholder="Add a comment…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+    <div class="flex justify-end gap-2 mt-2">
+      <button id="composer-cancel" class="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+      <button id="composer-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Comment</button>
+    </div>
+  </div>
+
+  <!-- Open-thread panel: replies + reply box -->
+  <div id="thread-panel" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl shadow-xl z-[70] w-72 flex flex-col" style="max-height:60vh">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
+      <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Comments</span>
+      <div class="flex items-center gap-1">
+        <button id="thread-delete" class="hidden text-zinc-400 hover:text-red-500 p-1 rounded" title="Delete thread">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>
+        <button id="thread-close" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="thread-replies" class="px-3 py-2 overflow-y-auto flex-1 space-y-3"></div>
+    <div class="px-3 py-2 border-t border-zinc-200 dark:border-zinc-700">
+      <textarea id="reply-text" rows="2" placeholder="Reply…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+      <div class="flex justify-end mt-2">
+        <button id="reply-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Reply</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -196,6 +231,10 @@
         </button>
       </div>
     </div>
+
+    <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
@@ -606,7 +645,7 @@
     }
 
     function updateBrushCursor() {
-      if (tool === 'text' || tool === 'shape') {
+      if (tool === 'text' || tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
         return;
       }
@@ -647,9 +686,9 @@
         canvas.style.cursor = 'default';
         return;
       }
-      if (tool === 'shape') {
+      if (tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = tool === 'comment' ? 'cell' : 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
@@ -693,6 +732,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (!noSelection) drawSelectionOverlay();
       renderLayerPanel();
+      updatePins();
     }
 
     function drawItem(item) {
@@ -789,12 +829,12 @@
       }
       if (s.type === 'image') {
         const cacheKey = s.dataUrl.slice(0, 64);
-        let img = imageCache.get(cacheKey);
+        let img = imageCache[cacheKey];
         if (!img) {
           img = new Image();
           img.onload = () => redrawAll();
           img.src = s.dataUrl;
-          imageCache.set(cacheKey, img);
+          imageCache[cacheKey] = img;
         }
         if (img.complete && img.naturalWidth > 0) {
           ctx.globalCompositeOperation = 'source-over';
@@ -1260,6 +1300,7 @@
       }
     }
 
+
     function getPos(e) {
       let sx, sy;
       if (e.touches && e.touches.length > 0) {
@@ -1318,8 +1359,10 @@
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
       document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
+      document.getElementById('btn-comment').classList.toggle('active', newTool === 'comment');
       if (newTool !== 'emoji') hideEmojiPicker();
       if (newTool !== 'shape') hideShapesPopover();
+      if (newTool !== 'comment') hideComposer();
       if (newTool !== 'text') hideTextPopover(); else showTextPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
@@ -1341,6 +1384,10 @@
         canvas.classList.remove('panning');
         brushCursor.style.display = 'none';
         canvas.style.cursor = 'crosshair';
+      } else if (newTool === 'comment') {
+        canvas.classList.remove('panning');
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'cell';
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
@@ -1637,6 +1684,12 @@
         openTextInput(e.clientX, e.clientY);
         return;
       }
+      // Left click in comment mode: open composer for a new thread
+      if (tool === 'comment' && e.button === 0) {
+        e.preventDefault();
+        openComposer(e.clientX, e.clientY);
+        return;
+      }
       // Select tool: pick / start dragging a layer
       if (tool === 'select' && e.button === 0) {
         e.preventDefault();
@@ -1782,6 +1835,14 @@
             commitText();
           }
           openTextInput(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        return;
+      }
+
+      if (tool === 'comment') {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          openComposer(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -1942,56 +2003,13 @@
     });
     document.getElementById('btn-select').addEventListener('click', () => setActiveTool('select'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+    document.getElementById('btn-comment').addEventListener('click', () => setActiveTool('comment'));
 
     // Layer actions (visible only while a layer is selected)
     document.getElementById('btn-front').addEventListener('click', () => reorderSelected('front'));
     document.getElementById('btn-back').addEventListener('click', () => reorderSelected('back'));
     document.getElementById('btn-delete-layer').addEventListener('click', () => deleteSelected());
 
-    // Image insert — file picker, downscale, place centered in current view
-    const imageInput = document.getElementById('image-input');
-    document.getElementById('btn-image').addEventListener('click', () => imageInput.click());
-    imageInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (file) insertImageFile(file);
-      imageInput.value = '';
-    });
-
-    function insertImageFile(file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          const MAX = 1280;
-          let w = img.naturalWidth, h = img.naturalHeight;
-          if (w > MAX || h > MAX) {
-            const r = Math.min(MAX / w, MAX / h);
-            w = Math.round(w * r);
-            h = Math.round(h * r);
-          }
-          const c = document.createElement('canvas');
-          c.width = w; c.height = h;
-          c.getContext('2d').drawImage(img, 0, 0, w, h);
-          // PNG keeps transparency; JPEG is much smaller for photos.
-          const isPng = file.type === 'image/png';
-          const src = c.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.85);
-          // Place centered in the current viewport, sized to look ~natural at this zoom.
-          const center = screenToWorld(canvas.width / 2, canvas.height / 2);
-          const worldW = w / scale, worldH = h / scale;
-          const item = { type: 'image', src, x: center.x - worldW / 2, y: center.y - worldH / 2, w: worldW, h: worldH, dx: 0, dy: 0 };
-          saveStroke(item).then((saved) => {
-            if (saved) {
-              strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index });
-              recordAction({ type: 'add', id: saved.id, data: item });
-              sortStrokes();
-              redrawAll();
-            }
-          });
-        };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    }
 
     document.getElementById('btn-emoji').addEventListener('click', () => {
       if (tool === 'emoji') {
@@ -2000,6 +2018,68 @@
         setActiveTool('emoji');
         showEmojiPicker();
       }
+    });
+
+    document.getElementById('btn-image').addEventListener('click', () => {
+      document.getElementById('image-input').click();
+    });
+
+    document.getElementById('image-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = () => URL.revokeObjectURL(objectUrl);
+      img.onload = async () => {
+        URL.revokeObjectURL(objectUrl);
+
+        const MAX_PX = 600;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX_PX || h > MAX_PX) {
+          if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
+          else { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
+        }
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = w;
+        offscreen.height = h;
+        offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
+
+        const dataUrl = offscreen.toDataURL(
+          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+          0.85
+        );
+
+        const MAX_WORLD = 400;
+        let worldW = w;
+        let worldH = h;
+        if (worldW > MAX_WORLD || worldH > MAX_WORLD) {
+          if (worldW >= worldH) { worldH = Math.round(worldH * MAX_WORLD / worldW); worldW = MAX_WORLD; }
+          else { worldW = Math.round(worldW * MAX_WORLD / worldH); worldH = MAX_WORLD; }
+        }
+
+        const viewCentreX = (canvas.width / 2 - offsetX) / scale;
+        const viewCentreY = (canvas.height / 2 - offsetY) / scale;
+        const strokeData = {
+          type: 'image',
+          x: viewCentreX - worldW / 2,
+          y: viewCentreY - worldH / 2,
+          width: worldW,
+          height: worldH,
+          dataUrl
+        };
+
+        const saved = await saveStroke(strokeData);
+        if (saved) {
+          strokes.push({ id: saved.id, stroke_data: strokeData });
+          redoActions = [];
+          redrawAll();
+        }
+      };
+      img.src = objectUrl;
     });
 
     buildEmojiPicker();
@@ -2503,6 +2583,320 @@
       commitText();
     });
 
+    // ===== Comment threads (pinned conversations) =====
+
+    let threads = [];
+    let openThreadId = null;
+    let composerWorld = null;   // world coords for the in-progress new thread
+    let composerAnchor = null;  // { id, dx, dy } when the click landed on an element
+    let currentUserId = null;
+    try {
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        currentUserId = payload.id != null ? String(payload.id) : null;
+      }
+    } catch (_) {}
+
+    const pinLayer = document.getElementById('pin-layer');
+    const pinEls = new Map(); // thread id -> pin button element
+
+    // Bounding box of a drawable element in world space, or null when it has
+    // none (free-form pen strokes are excluded). Returns {minX,minY,maxX,maxY}.
+    function elementBBox(item) {
+      if (!item) return null;
+      if (item.type === 'shape') {
+        return {
+          minX: Math.min(item.x0, item.x1), minY: Math.min(item.y0, item.y1),
+          maxX: Math.max(item.x0, item.x1), maxY: Math.max(item.y0, item.y1)
+        };
+      }
+      if (item.type === 'image') {
+        return { minX: item.x, minY: item.y, maxX: item.x + item.width, maxY: item.y + item.height };
+      }
+      if (item.type === 'emoji') {
+        const h = item.size || EMOJI_SIZE;
+        return { minX: item.x - h / 2, minY: item.y - h / 2, maxX: item.x + h / 2, maxY: item.y + h / 2 };
+      }
+      if (item.type === 'text') {
+        const fs = item.fontSize || 16;
+        const w = Math.max(1, (item.text ? item.text.length : 1)) * fs * 0.6;
+        return { minX: item.x, minY: item.y - fs, maxX: item.x + w, maxY: item.y };
+      }
+      return null;
+    }
+
+    function bboxCenter(b) { return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }; }
+
+    // Topmost (newest) element whose bbox contains world point (wx,wy), or null.
+    function hitTestElement(wx, wy) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const item = strokes[i].stroke_data || strokes[i];
+        const b = elementBBox(item);
+        if (b && wx >= b.minX && wx <= b.maxX && wy >= b.minY && wy <= b.maxY) {
+          return { id: strokes[i].id, center: bboxCenter(b) };
+        }
+      }
+      return null;
+    }
+
+    // Current world position of a thread. Anchored threads track their
+    // element's bbox centre + stored offset; if the element is gone (deleted
+    // or cleared), fall back to the thread's stored absolute x/y.
+    function threadWorldPos(t) {
+      if (t.anchor_stroke_id != null && t.anchor_dx != null && t.anchor_dy != null) {
+        const s = strokes.find((s) => s.id === t.anchor_stroke_id);
+        if (s) {
+          const b = elementBBox(s.stroke_data || s);
+          if (b) {
+            const c = bboxCenter(b);
+            return { x: c.x + t.anchor_dx, y: c.y + t.anchor_dy };
+          }
+        }
+      }
+      return { x: t.x, y: t.y };
+    }
+
+    // Reconcile pin DOM with `threads` and reposition every pin from its world
+    // coords. Called from redrawAll(), so it runs on every viewport change.
+    function updatePins() {
+      if (!pinLayer) return;
+      for (const [id, el] of pinEls) {
+        if (!threads.some((t) => t.id === id)) { el.remove(); pinEls.delete(id); }
+      }
+      for (const t of threads) {
+        let el = pinEls.get(t.id);
+        if (!el) {
+          el = document.createElement('button');
+          el.className = 'absolute -translate-x-1/2 -translate-y-full flex items-center justify-center w-7 h-7 rounded-full rounded-bl-none bg-violet-600 text-white text-[11px] font-medium shadow-lg border-2 border-white dark:border-zinc-800 hover:bg-violet-700 transition-colors';
+          el.style.pointerEvents = 'auto';
+          el.title = 'Open comment thread';
+          el.addEventListener('click', (ev) => { ev.stopPropagation(); openThreadPanel(t.id); });
+          pinLayer.appendChild(el);
+          pinEls.set(t.id, el);
+        }
+        const detached = t.anchor_stroke_id == null && (t.anchor_dx != null || t.anchor_dy != null);
+        el.classList.toggle('opacity-60', detached);
+        el.textContent = String((t.replies && t.replies.length) || 1);
+        const wp = threadWorldPos(t);
+        const sp = worldToScreen(wp.x, wp.y);
+        if (sp.x < -40 || sp.y < -40 || sp.x > window.innerWidth + 40 || sp.y > window.innerHeight + 40) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = 'flex';
+          el.style.left = sp.x + 'px';
+          el.style.top = sp.y + 'px';
+        }
+      }
+    }
+
+    function positionPopover(el, sx, sy, display) {
+      el.classList.remove('hidden');
+      el.style.display = display || 'block';
+      const rect = el.getBoundingClientRect();
+      let left = sx + 12;
+      let top = sy + 12;
+      if (left + rect.width > window.innerWidth - 8) left = sx - rect.width - 12;
+      if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
+      el.style.left = Math.max(8, left) + 'px';
+      el.style.top = Math.max(8, top) + 'px';
+    }
+
+    // --- New-thread composer ---
+    function openComposer(screenX, screenY) {
+      closeThreadPanel();
+      const world = screenToWorld(screenX, screenY);
+      composerWorld = world;
+      const hit = hitTestElement(world.x, world.y);
+      const note = document.getElementById('composer-attach-note');
+      if (hit) {
+        composerAnchor = { id: hit.id, dx: world.x - hit.center.x, dy: world.y - hit.center.y };
+        note.classList.remove('hidden');
+      } else {
+        composerAnchor = null;
+        note.classList.add('hidden');
+      }
+      const composer = document.getElementById('comment-composer');
+      document.getElementById('composer-text').value = '';
+      positionPopover(composer, screenX, screenY, 'block');
+      document.getElementById('composer-text').focus();
+    }
+
+    function hideComposer() {
+      const composer = document.getElementById('comment-composer');
+      composer.style.display = 'none';
+      composer.classList.add('hidden');
+      composerWorld = null;
+      composerAnchor = null;
+    }
+
+    async function submitComposer() {
+      const body = document.getElementById('composer-text').value;
+      if (!body.trim() || !composerWorld) { hideComposer(); return; }
+      const payload = { x: composerWorld.x, y: composerWorld.y, body: body.trim() };
+      if (composerAnchor) {
+        payload.anchor_stroke_id = composerAnchor.id;
+        payload.anchor_dx = composerAnchor.dx;
+        payload.anchor_dy = composerAnchor.dy;
+      }
+      hideComposer();
+      try {
+        const res = await fetch('/api/threads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const thread = await res.json();
+          if (!threads.some((t) => t.id === thread.id)) threads.push(thread);
+          updatePins();
+          openThreadPanel(thread.id);
+        } else {
+          showStatus('Comment failed');
+        }
+      } catch (err) {
+        console.error('Create thread failed:', err);
+        showStatus('Comment failed');
+      }
+      setActiveTool('pen');
+    }
+
+    // --- Open-thread panel ---
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function relativeTime(iso) {
+      const then = new Date(iso).getTime();
+      if (!then) return '';
+      const m = Math.floor((Date.now() - then) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    }
+
+    function renderThreadReplies(t) {
+      const wrap = document.getElementById('thread-replies');
+      wrap.innerHTML = '';
+      for (const r of (t.replies || [])) {
+        const div = document.createElement('div');
+        div.innerHTML =
+          '<div class="flex items-baseline gap-2 mb-0.5">' +
+            '<span class="text-xs font-medium text-zinc-700 dark:text-zinc-200">' + escapeHtml(r.username) + '</span>' +
+            '<span class="text-[10px] text-zinc-400">' + relativeTime(r.created_at) + '</span>' +
+          '</div>' +
+          '<div class="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">' + escapeHtml(r.body) + '</div>';
+        wrap.appendChild(div);
+      }
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    function openThreadPanel(id) {
+      const t = threads.find((t) => t.id === id);
+      if (!t) return;
+      openThreadId = id;
+      hideComposer();
+      renderThreadReplies(t);
+      const delBtn = document.getElementById('thread-delete');
+      delBtn.classList.toggle('hidden', !(currentUserId != null && String(t.user_id) === currentUserId));
+      document.getElementById('reply-text').value = '';
+      const panel = document.getElementById('thread-panel');
+      const wp = threadWorldPos(t);
+      const sp = worldToScreen(wp.x, wp.y);
+      positionPopover(panel, sp.x, sp.y, 'flex');
+    }
+
+    function closeThreadPanel() {
+      openThreadId = null;
+      const panel = document.getElementById('thread-panel');
+      panel.style.display = 'none';
+      panel.classList.add('hidden');
+    }
+
+    async function submitReply() {
+      if (openThreadId == null) return;
+      const ta = document.getElementById('reply-text');
+      const body = ta.value;
+      if (!body.trim()) return;
+      ta.value = '';
+      try {
+        const res = await fetch('/api/threads/' + openThreadId + '/replies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ body: body.trim() })
+        });
+        if (res.ok) {
+          const reply = await res.json();
+          const t = threads.find((t) => t.id === reply.thread_id);
+          if (t) {
+            t.replies = t.replies || [];
+            if (!t.replies.some((r) => r.id === reply.id)) t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        } else {
+          showStatus('Reply failed');
+        }
+      } catch (err) {
+        console.error('Reply failed:', err);
+        showStatus('Reply failed');
+      }
+    }
+
+    async function deleteOpenThread() {
+      if (openThreadId == null) return;
+      const id = openThreadId;
+      try {
+        await fetch('/api/threads/' + id, { method: 'DELETE', headers: { ...headers } });
+      } catch (err) {
+        console.error('Delete thread failed:', err);
+      }
+      const idx = threads.findIndex((t) => t.id === id);
+      if (idx !== -1) threads.splice(idx, 1);
+      closeThreadPanel();
+      updatePins();
+    }
+
+    document.getElementById('composer-submit').addEventListener('click', submitComposer);
+    document.getElementById('composer-cancel').addEventListener('click', () => { hideComposer(); setActiveTool('pen'); });
+    document.getElementById('composer-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitComposer(); }
+      else if (e.key === 'Escape') { e.preventDefault(); hideComposer(); setActiveTool('pen'); }
+    });
+    document.getElementById('reply-submit').addEventListener('click', submitReply);
+    document.getElementById('thread-close').addEventListener('click', closeThreadPanel);
+    document.getElementById('thread-delete').addEventListener('click', deleteOpenThread);
+    document.getElementById('reply-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitReply(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeThreadPanel(); }
+    });
+
+    // Close the open thread panel when clicking outside it (but not on a pin —
+    // pin clicks switch panels via their own handler).
+    document.addEventListener('mousedown', (e) => {
+      const panel = document.getElementById('thread-panel');
+      if (openThreadId != null && !panel.contains(e.target) && !e.target.closest('#pin-layer')) {
+        closeThreadPanel();
+      }
+    });
+
+    async function loadThreads() {
+      try {
+        const res = await fetch('/api/threads', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        threads = data.threads || [];
+        updatePins();
+      } catch (err) {
+        console.error('Load threads failed:', err);
+      }
+    }
+
     async function saveStroke(strokeData) {
       try {
         const res = await fetch('/api/strokes', {
@@ -2582,6 +2976,40 @@
         updateUndoRedoButtons();
         deselectLayer();
         redrawAll();
+        // Strokes are gone; re-fetch threads so anchors that the server
+        // nulled (ON DELETE SET NULL) are reflected locally.
+        loadThreads();
+      });
+
+      es.addEventListener('thread', (e) => {
+        const data = JSON.parse(e.data);
+        if (!threads.some((t) => t.id === data.id)) {
+          threads.push(data);
+          updatePins();
+        }
+      });
+
+      es.addEventListener('reply', (e) => {
+        const reply = JSON.parse(e.data);
+        const t = threads.find((t) => t.id === reply.thread_id);
+        if (t) {
+          t.replies = t.replies || [];
+          if (!t.replies.some((r) => r.id === reply.id)) {
+            t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        }
+      });
+
+      es.addEventListener('thread-delete', (e) => {
+        const data = JSON.parse(e.data);
+        const idx = threads.findIndex((t) => t.id === data.id);
+        if (idx !== -1) {
+          threads.splice(idx, 1);
+          if (openThreadId === data.id) closeThreadPanel();
+          updatePins();
+        }
       });
 
       es.onerror = () => {
@@ -2646,6 +3074,7 @@
     updateUndoRedoButtons();
     resize();
     loadStrokes();
+    loadThreads();
     connectSSE();
   </script>
 </body>
