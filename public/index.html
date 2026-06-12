@@ -2614,19 +2614,22 @@
       });
     });
 
-    // Dragging
+    // Dragging (with threshold to distinguish from click)
     toolbarToggle.addEventListener('mousedown', (e) => {
-      isToolbarDragging = true;
-      toolbarToggle.classList.add('dragging');
       toolbarDragStart = { x: e.clientX, y: e.clientY };
       toolbarDragOffset = { x: toolbarPos.x - e.clientX, y: toolbarPos.y - e.clientY };
-      closeAllPopovers();
-      toolbarMenu.classList.add('hidden');
-      e.preventDefault();
     });
 
     document.addEventListener('mousemove', (e) => {
-      if (!isToolbarDragging) return;
+      if (!toolbarDragStart) return;
+      const distance = Math.hypot(e.clientX - toolbarDragStart.x, e.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
       let newX = e.clientX + toolbarDragOffset.x;
       let newY = e.clientY + toolbarDragOffset.y;
       // Clamp to viewport (48px button, 20px margin)
@@ -2637,10 +2640,12 @@
     });
 
     document.addEventListener('mouseup', () => {
-      if (!isToolbarDragging) return;
-      toolbarToggle.classList.remove('dragging');
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
       isToolbarDragging = false;
-      localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      toolbarDragStart = null;
     });
 
     window.addEventListener('resize', resize);
