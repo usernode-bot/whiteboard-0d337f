@@ -475,7 +475,7 @@
     // Toolbar dragging state
     let toolbarPos = { x: 0, y: 0 };
     let isToolbarDragging = false;
-    let toolbarDragStart = { x: 0, y: 0 };
+    let toolbarDragStart = null;
     let toolbarDragOffset = { x: 0, y: 0 };
     let toolbarCollapseTimeout = null;
 
@@ -2640,6 +2640,43 @@
     });
 
     document.addEventListener('mouseup', () => {
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
+      isToolbarDragging = false;
+      toolbarDragStart = null;
+    });
+
+    // Touch drag support for mobile
+    toolbarToggle.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      toolbarDragStart = { x: t.clientX, y: t.clientY };
+      toolbarDragOffset = { x: toolbarPos.x - t.clientX, y: toolbarPos.y - t.clientY };
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!toolbarDragStart) return;
+      const t = e.touches[0];
+      const distance = Math.hypot(t.clientX - toolbarDragStart.x, t.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
+      let newX = t.clientX + toolbarDragOffset.x;
+      let newY = t.clientY + toolbarDragOffset.y;
+      newX = Math.max(20, Math.min(window.innerWidth - 68, newX));
+      newY = Math.max(20, Math.min(window.innerHeight - 68, newY));
+      toolbarPos = { x: newX, y: newY };
+      updateToolbarPosition();
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
       if (isToolbarDragging) {
         toolbarToggle.classList.remove('dragging');
         localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
