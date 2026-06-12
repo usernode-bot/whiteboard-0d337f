@@ -149,6 +149,41 @@
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
 
+  <!-- Comment pins overlay: pins track world coords but keep a fixed screen size. -->
+  <div id="pin-layer" class="fixed inset-0 z-40" style="pointer-events:none"></div>
+
+  <!-- Composer for a brand-new thread -->
+  <div id="comment-composer" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-xl z-[70] w-64">
+    <p id="composer-attach-note" class="text-xs text-zinc-400 dark:text-zinc-500 mb-2 hidden">📌 Attached to an element</p>
+    <textarea id="composer-text" rows="3" placeholder="Add a comment…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+    <div class="flex justify-end gap-2 mt-2">
+      <button id="composer-cancel" class="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+      <button id="composer-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Comment</button>
+    </div>
+  </div>
+
+  <!-- Open-thread panel: replies + reply box -->
+  <div id="thread-panel" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl shadow-xl z-[70] w-72 flex flex-col" style="max-height:60vh">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
+      <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Comments</span>
+      <div class="flex items-center gap-1">
+        <button id="thread-delete" class="hidden text-zinc-400 hover:text-red-500 p-1 rounded" title="Delete thread">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>
+        <button id="thread-close" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="thread-replies" class="px-3 py-2 overflow-y-auto flex-1 space-y-3"></div>
+    <div class="px-3 py-2 border-t border-zinc-200 dark:border-zinc-700">
+      <textarea id="reply-text" rows="2" placeholder="Reply…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+      <div class="flex justify-end mt-2">
+        <button id="reply-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Reply</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
     <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
@@ -197,6 +232,10 @@
         </button>
       </div>
     </div>
+
+    <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </button>
 
     <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
@@ -275,9 +314,9 @@
     </button>
   </div>
 
-  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56 max-h-[70vh] overflow-y-auto">
     <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
-    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+    <div id="color-swatches" class="grid grid-cols-6 gap-1.5 mb-2"></div>
     <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
@@ -286,6 +325,29 @@
 
   <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
     <div class="grid grid-cols-8 gap-1"></div>
+  </div>
+
+  <div id="text-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56">
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Text</p>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Font</label>
+    <select id="text-font-family" class="w-full mb-3 px-2 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
+      <option value="sans-serif" style="font-family:sans-serif">Sans-serif</option>
+      <option value="serif" style="font-family:serif">Serif</option>
+      <option value="monospace" style="font-family:monospace">Monospace</option>
+      <option value="cursive" style="font-family:cursive">Handwriting</option>
+      <option value="Arial, sans-serif" style="font-family:Arial,sans-serif">Arial</option>
+      <option value="Georgia, serif" style="font-family:Georgia,serif">Georgia</option>
+      <option value="'Courier New', monospace" style="font-family:'Courier New',monospace">Courier</option>
+      <option value="'Comic Sans MS', cursive" style="font-family:'Comic Sans MS',cursive">Comic</option>
+    </select>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Size</label>
+    <div class="flex items-center gap-2">
+      <input id="text-size-slider" type="range" min="8" max="200" step="1" value="24" class="flex-1">
+      <div class="flex items-center gap-0.5">
+        <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
+        <span class="text-xs text-zinc-400 dark:text-zinc-500">px</span>
+      </div>
+    </div>
   </div>
 
   <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
@@ -454,11 +516,135 @@
     // Text tool state
     let pendingTextX = 0;
     let pendingTextY = 0;
+    // Font styling for newly placed text. Decoupled from the brush Size slider:
+    // text size is governed solely by the text tool pop-up's size control.
+    let textFontFamily = 'sans-serif';
+    let textFontSize = 24;
 
     // Rainbow brush: hue advances this many degrees per recorded point.
     const RAINBOW_HUE_STEP = 8;
     function rainbowColor(index) {
       return 'hsl(' + (((index * RAINBOW_HUE_STEP) % 360 + 360) % 360) + ', 90%, 55%)';
+    }
+
+    // --- Handwriting optimisation tuning constants ---
+    // Variable width maps drawing speed (and pressure where available) to a
+    // multiplier of the base stroke width. Faster motion / lighter pressure =>
+    // thinner; slower / heavier => thicker. World-space so it's zoom-invariant.
+    const WIDTH_MIN_MULT = 0.5;   // thinnest (fast / light)
+    const WIDTH_MAX_MULT = 1.6;   // thickest (slow / heavy)
+    const SPEED_MAX = 2.0;        // world px per ms at which width hits the minimum
+    const WIDTH_EMA_ALPHA = 0.5;  // exponential smoothing of per-point widths
+    const MIN_POINT_DIST = 1.5;   // world px; points closer than this are thinned out
+
+    // Pen pressure captured from PointerEvents (stylus only). 0 means "no real
+    // signal" (mouse, or a pen that doesn't report pressure) and falls back to
+    // the speed-based model. Touch pressure is read from TouchEvent force.
+    let penPressure = 0;
+
+    function speedToWidth(speed, baseWidth) {
+      const t = Math.min(1, speed / SPEED_MAX);
+      const mult = WIDTH_MAX_MULT + (WIDTH_MIN_MULT - WIDTH_MAX_MULT) * t;
+      return baseWidth * mult;
+    }
+
+    function pressureToWidth(pressure, baseWidth) {
+      const p = Math.max(0, Math.min(1, pressure));
+      return baseWidth * (WIDTH_MIN_MULT + (WIDTH_MAX_MULT - WIDTH_MIN_MULT) * p);
+    }
+
+    // Read a real pressure signal for the current input event, or 0 if none.
+    // Touch: TouchEvent.force (>0 on Apple Pencil / 3D-touch). Mouse path:
+    // the last pen-pointer pressure stashed by the pointer listeners.
+    function getPressure(e) {
+      if (e.touches && e.touches.length > 0) {
+        const f = e.touches[0].force;
+        return (typeof f === 'number' && f > 0) ? f : 0;
+      }
+      return penPressure;
+    }
+
+    // Forward pass: bake a per-point width `w` from stored speed (point.t) and
+    // pressure (point.pr), EMA-smoothed. Deterministic, so the live preview and
+    // every client that re-renders the saved stroke agree.
+    function computePointWidths(points, baseWidth) {
+      let ema = baseWidth;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        let target;
+        if (typeof p.pr === 'number' && p.pr > 0) {
+          target = pressureToWidth(p.pr, baseWidth);
+        } else if (i > 0 && typeof p.t === 'number' && typeof points[i - 1].t === 'number') {
+          const dt = Math.max(1, p.t - points[i - 1].t);
+          const dx = p.x - points[i - 1].x;
+          const dy = p.y - points[i - 1].y;
+          const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+          target = speedToWidth(speed, baseWidth);
+        } else {
+          target = baseWidth;
+        }
+        ema = i === 0 ? target : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * ema);
+        p.w = ema;
+      }
+    }
+
+    // Quadratic-midpoint smoothing: builds a single smooth path through the
+    // points (caller does beginPath/strokeStyle/lineWidth/stroke). Used for
+    // uniform-width strokes (existing saved strokes, eraser).
+    function buildSmoothPath(ctx, points) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.moveTo(points[0].x, points[0].y);
+      if (n === 2) {
+        ctx.lineTo(points[1].x, points[1].y);
+        return;
+      }
+      for (let i = 1; i < n - 1; i++) {
+        const mx = (points[i].x + points[i + 1].x) / 2;
+        const my = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+      }
+      // Final segment runs through the last raw point.
+      ctx.quadraticCurveTo(points[n - 2].x, points[n - 2].y, points[n - 1].x, points[n - 1].y);
+    }
+
+    // Smoothed render, segment-by-segment, so each piece can carry its own
+    // width (point.w) and/or colour (getColor). Used for variable-width pen and
+    // for the rainbow brush. Falls back to baseWidth where a point lacks `w`.
+    function strokeSmoothSegments(ctx, points, getColor, baseWidth) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (n === 2) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.lineTo(points[1].x, points[1].y);
+        ctx.lineWidth = typeof points[1].w === 'number' ? points[1].w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(1);
+        ctx.stroke();
+        return;
+      }
+      let prevMidX = points[0].x, prevMidY = points[0].y;
+      for (let i = 1; i < n; i++) {
+        const p = points[i];
+        let midX, midY;
+        if (i < n - 1) {
+          midX = (p.x + points[i + 1].x) / 2;
+          midY = (p.y + points[i + 1].y) / 2;
+        } else {
+          midX = p.x;
+          midY = p.y;
+        }
+        ctx.beginPath();
+        ctx.moveTo(prevMidX, prevMidY);
+        ctx.quadraticCurveTo(p.x, p.y, midX, midY);
+        ctx.lineWidth = typeof p.w === 'number' ? p.w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(i);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
+      }
     }
 
     function hexToRgba(hex, alpha) {
@@ -469,7 +655,7 @@
     }
 
     function updateBrushCursor() {
-      if (tool === 'text' || tool === 'shape') {
+      if (tool === 'text' || tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
         return;
       }
@@ -510,9 +696,9 @@
         canvas.style.cursor = 'default';
         return;
       }
-      if (tool === 'shape') {
+      if (tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = tool === 'comment' ? 'cell' : 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
@@ -553,6 +739,7 @@
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (!noSelection) drawSelectionOverlay();
+      updatePins();
     }
 
     function drawItem(item) {
@@ -635,7 +822,7 @@
 
     function drawStroke(s) {
       if (s.type === 'text') {
-        ctx.font = s.fontSize + 'px sans-serif';
+        ctx.font = s.fontSize + 'px ' + (s.fontFamily || 'sans-serif');
         ctx.fillStyle = s.color;
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillText(s.text, s.x, s.y);
@@ -643,12 +830,12 @@
       }
       if (s.type === 'image') {
         const cacheKey = s.dataUrl.slice(0, 64);
-        let img = imageCache.get(cacheKey);
+        let img = imageCache[cacheKey];
         if (!img) {
           img = new Image();
           img.onload = () => redrawAll();
           img.src = s.dataUrl;
-          imageCache.set(cacheKey, img);
+          imageCache[cacheKey] = img;
         }
         if (img.complete && img.naturalWidth > 0) {
           ctx.globalCompositeOperation = 'source-over';
@@ -659,23 +846,29 @@
       if (!s.points || s.points.length < 2) return;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = s.width;
+
+      // Rainbow: smoothed, per-segment hue (and variable width when the points
+      // carry `w`; older strokes without `w` fall back to the base width).
       if (s.rainbow && !s.eraser) {
         ctx.globalCompositeOperation = 'source-over';
-        for (let i = 1; i < s.points.length; i++) {
-          ctx.beginPath();
-          ctx.moveTo(s.points[i - 1].x, s.points[i - 1].y);
-          ctx.lineTo(s.points[i].x, s.points[i].y);
-          ctx.strokeStyle = rainbowColor(i);
-          ctx.stroke();
-        }
+        strokeSmoothSegments(ctx, s.points, rainbowColor, s.width);
         return;
       }
-      ctx.beginPath();
-      ctx.moveTo(s.points[0].x, s.points[0].y);
-      for (let i = 1; i < s.points.length; i++) {
-        ctx.lineTo(s.points[i].x, s.points[i].y);
+
+      // Variable-width pen: smoothed, per-segment width baked into the points.
+      const hasVarWidth = !s.eraser && s.points.some((p) => typeof p.w === 'number');
+      if (hasVarWidth) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = s.color;
+        strokeSmoothSegments(ctx, s.points, null, s.width);
+        return;
       }
+
+      // Uniform width (eraser, and legacy strokes saved before variable width):
+      // a single smooth quadratic path at the base width.
+      ctx.lineWidth = s.width;
+      ctx.beginPath();
+      buildSmoothPath(ctx, s.points);
       ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
       if (s.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
@@ -1081,6 +1274,7 @@
       }
     }
 
+
     function getPos(e) {
       let sx, sy;
       if (e.touches && e.touches.length > 0) {
@@ -1146,8 +1340,11 @@
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
       document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
+      document.getElementById('btn-comment').classList.toggle('active', newTool === 'comment');
       if (newTool !== 'emoji') hideEmojiPicker();
       if (newTool !== 'shape') hideShapesPopover();
+      if (newTool !== 'comment') hideComposer();
+      if (newTool !== 'text') hideTextPopover(); else showTextPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
@@ -1168,6 +1365,10 @@
         canvas.classList.remove('panning');
         brushCursor.style.display = 'none';
         canvas.style.cursor = 'crosshair';
+      } else if (newTool === 'comment') {
+        canvas.classList.remove('panning');
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'cell';
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
@@ -1223,9 +1424,7 @@
 
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
-      // Only freehand tools draw strokes now. Eraser deletes whole layers,
-      // select moves them, and move/text/emoji/image are handled elsewhere.
-      if (tool !== 'pen' && tool !== 'rainbow') return;
+      if (tool !== 'pen' && tool !== 'rainbow' && !isShapeTool()) return;
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
@@ -1235,12 +1434,16 @@
         currentStroke = null;
         return;
       }
+      pos.t = performance.now();
+      const pr0 = getPressure(e);
+      if (pr0 > 0) pos.pr = pr0;
       currentStroke = {
         points: [pos],
         color: strokeColor,
         width: strokeWidth,
         eraser: false,
-        rainbow: tool === 'rainbow'
+        rainbow: tool === 'rainbow',
+        emaWidth: null
       };
     }
 
@@ -1273,22 +1476,61 @@
       if (!currentStroke) return;
       e.preventDefault();
       const pos = getPos(e);
-      currentStroke.points.push(pos);
+      const pts = currentStroke.points;
+      const last = pts[pts.length - 1];
 
+      // Minimum-distance thinning (world space): drop points too close to the
+      // previous one so high-frequency move events don't bloat the stroke.
+      const dx = pos.x - last.x;
+      const dy = pos.y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MIN_POINT_DIST) return;
+
+      const now = performance.now();
+      pos.t = now;
+      const pr = getPressure(e);
+      if (pr > 0) pos.pr = pr;
+
+      // Provisional per-point width for the live preview — mirrors the
+      // commit-time bake (computePointWidths) so the preview matches the
+      // committed render. Eraser stays uniform width.
+      if (!currentStroke.eraser) {
+        let target;
+        if (pr > 0) {
+          target = pressureToWidth(pr, currentStroke.width);
+        } else {
+          const dt = Math.max(1, now - (last.t || now));
+          target = speedToWidth(dist / dt, currentStroke.width);
+        }
+        currentStroke.emaWidth = currentStroke.emaWidth == null
+          ? target
+          : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * currentStroke.emaWidth);
+        pos.w = currentStroke.emaWidth;
+      }
+
+      pts.push(pos);
+
+      // Draw the newly-added smoothed segment incrementally. The quadratic
+      // midpoint method is causal, so the segment up to the previous midpoint
+      // is final; endDraw's redrawAll repaints the fully-smoothed stroke.
       const cos = Math.cos(rotation), sin = Math.sin(rotation);
       ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
+      const n = pts.length;
       ctx.beginPath();
-      const pts = currentStroke.points;
-      if (pts.length >= 2) {
-        ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
-        ctx.lineTo(pos.x, pos.y);
+      if (n === 2) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        const a = pts[n - 3], b = pts[n - 2], c = pts[n - 1];
+        ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+        ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2);
       }
       if (currentStroke.rainbow && !currentStroke.eraser) {
-        ctx.strokeStyle = rainbowColor(pts.length - 1);
+        ctx.strokeStyle = rainbowColor(n - 1);
       } else {
         ctx.strokeStyle = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       }
-      ctx.lineWidth = currentStroke.width;
+      ctx.lineWidth = currentStroke.eraser ? currentStroke.width : (pos.w || currentStroke.width);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       if (currentStroke.eraser) {
@@ -1322,7 +1564,7 @@
             const saved = await saveStroke(strokeData);
             if (saved) {
               strokes.push({ id: saved.id, stroke_data: strokeData });
-              redoStack = [];
+              redoActions = [];
             }
           }
         }
@@ -1334,8 +1576,23 @@
       if (!currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
+        // Bake the final per-point width from the captured speed/pressure, then
+        // persist only {x, y, w} (eraser stays uniform: {x, y}). Computing here
+        // keeps stored strokes self-describing — other clients and re-renders
+        // don't need the speed/pressure model.
+        let points;
+        if (currentStroke.eraser) {
+          points = currentStroke.points.map((p) => ({ x: p.x, y: p.y }));
+        } else {
+          computePointWidths(currentStroke.points, currentStroke.width);
+          points = currentStroke.points.map((p) => ({
+            x: p.x,
+            y: p.y,
+            w: Math.round(p.w * 10) / 10
+          }));
+        }
         const strokeData = {
-          points: currentStroke.points,
+          points: points,
           color: currentStroke.color,
           width: currentStroke.width,
           eraser: currentStroke.eraser,
@@ -1351,9 +1608,19 @@
       }
       currentStroke = null;
       isDrawing = false;
+      redrawAll();
     }
 
     // --- Mouse event listeners ---
+
+    // Stylus pressure capture. Pointer events fire alongside mouse events; we
+    // only stash pressure for actual pens so the mouse path keeps using the
+    // speed model (getPressure returns this for non-touch input).
+    function trackPenPressure(e) {
+      penPressure = (e.pointerType === 'pen' && e.pressure > 0) ? e.pressure : 0;
+    }
+    canvas.addEventListener('pointerdown', trackPenPressure);
+    canvas.addEventListener('pointermove', trackPenPressure);
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.target.closest('.toolbar')) return;
@@ -1391,6 +1658,12 @@
           commitText();
         }
         openTextInput(e.clientX, e.clientY);
+        return;
+      }
+      // Left click in comment mode: open composer for a new thread
+      if (tool === 'comment' && e.button === 0) {
+        e.preventDefault();
+        openComposer(e.clientX, e.clientY);
         return;
       }
       // Select tool: resize handle → drag corner; otherwise pick / move layer
@@ -1556,6 +1829,14 @@
         return;
       }
 
+      if (tool === 'comment') {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          openComposer(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        return;
+      }
+
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1) {
@@ -1709,9 +1990,18 @@
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
-    document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
+    document.getElementById('btn-text').addEventListener('click', () => {
+      // Re-clicking while already on the text tool toggles the options pop-up.
+      if (tool === 'text') {
+        const tp = document.getElementById('text-popover');
+        if (tp.classList.contains('hidden')) showTextPopover(); else hideTextPopover();
+      } else {
+        setActiveTool('text');
+      }
+    });
     document.getElementById('btn-select').addEventListener('click', () => setActiveTool('select'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+    document.getElementById('btn-comment').addEventListener('click', () => setActiveTool('comment'));
 
     // Layer actions (visible only while a layer is selected)
     document.getElementById('btn-front').addEventListener('click', () => reorderSelected('front'));
@@ -1824,9 +2114,26 @@
     // Color palette button + popover
     (function initColorPalette() {
       const COLOR_SWATCHES = [
-        '#1c1917', '#6b7280', '#ffffff', '#ef4444',
-        '#f97316', '#eab308', '#22c55e', '#3b82f6',
-        '#8b5cf6', '#ec4899', '#14b8a6', '#92400e'
+        // Neutrals: black → white
+        '#000000', '#1c1917', '#44403c', '#6b7280', '#a1a1aa', '#ffffff',
+        // Reds
+        '#7f1d1d', '#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fecaca',
+        // Oranges & ambers
+        '#9a3412', '#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa',
+        // Yellows
+        '#a16207', '#ca8a04', '#eab308', '#facc15', '#fde047', '#fef08a',
+        // Greens
+        '#166534', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0',
+        // Teals & cyans
+        '#115e59', '#0d9488', '#14b8a6', '#06b6d4', '#22d3ee', '#a5f3fc',
+        // Blues
+        '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe',
+        // Indigos & violets
+        '#3730a3', '#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe',
+        // Pinks & magentas
+        '#9d174d', '#db2777', '#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8',
+        // Browns & earth tones
+        '#451a03', '#78350f', '#92400e', '#b45309', '#d97706', '#fcd34d'
       ];
 
       const swatchWrap = document.getElementById('color-swatches');
@@ -1835,7 +2142,7 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.className = 'w-6 h-6 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
         sw.addEventListener('click', () => {
           setStrokeColor(color);
           document.getElementById('color-popover').classList.add('hidden');
@@ -1850,7 +2157,7 @@
       function openColorPopover() {
         const rect = btnColor.getBoundingClientRect();
         colorPopover.style.top = (rect.bottom + 8) + 'px';
-        const left = Math.min(rect.left, window.innerWidth - 184);
+        const left = Math.min(rect.left, window.innerWidth - 232);
         colorPopover.style.left = Math.max(4, left) + 'px';
         colorPopover.classList.remove('hidden');
       }
@@ -1889,6 +2196,90 @@
       strokeWidth = parseInt(e.target.value);
       sizeLabel.textContent = strokeWidth;
       updateBrushCursor();
+    });
+
+    // --- Text tool options pop-up (font family + size) ---
+    const TEXT_SIZE_MIN = 8;
+    const TEXT_SIZE_MAX = 200;
+    const btnText = document.getElementById('btn-text');
+    const textPopover = document.getElementById('text-popover');
+    const textFontSelect = document.getElementById('text-font-family');
+    const textSizeSlider = document.getElementById('text-size-slider');
+    const textSizeInput = document.getElementById('text-size-input');
+
+    function clampTextSize(n) {
+      if (!Number.isFinite(n)) return textFontSize;
+      return Math.min(TEXT_SIZE_MAX, Math.max(TEXT_SIZE_MIN, Math.round(n)));
+    }
+
+    function showTextPopover() {
+      const rect = btnText.getBoundingClientRect();
+      textPopover.style.top = (rect.bottom + 8) + 'px';
+      const left = Math.min(rect.left, window.innerWidth - 240);
+      textPopover.style.left = Math.max(4, left) + 'px';
+      textPopover.classList.remove('hidden');
+    }
+
+    function hideTextPopover() {
+      textPopover.classList.add('hidden');
+    }
+
+    // Reflect the chosen size/family onto a text input that is currently open.
+    function applyTextStyleToOpenInput() {
+      if (textInputEl.style.display === 'none') return;
+      const screenFontSize = textFontSize * scale;
+      textInputEl.style.fontSize = screenFontSize + 'px';
+      textInputEl.style.fontFamily = textFontFamily;
+      textMeasureEl.style.fontSize = screenFontSize + 'px';
+      textMeasureEl.style.fontFamily = textFontFamily;
+      textMeasureEl.textContent = textInputEl.value || '';
+      textInputEl.style.width = Math.max(4, textMeasureEl.offsetWidth + 4) + 'px';
+    }
+
+    function setTextFontSize(n, opts) {
+      opts = opts || {};
+      textFontSize = clampTextSize(n);
+      if (!opts.skipSlider) textSizeSlider.value = textFontSize;
+      if (!opts.skipInput) textSizeInput.value = textFontSize;
+      applyTextStyleToOpenInput();
+    }
+
+    // Initialize controls from defaults.
+    textFontSelect.value = textFontFamily;
+    textSizeSlider.value = textFontSize;
+    textSizeInput.value = textFontSize;
+
+    textFontSelect.addEventListener('change', (e) => {
+      textFontFamily = e.target.value;
+      applyTextStyleToOpenInput();
+    });
+
+    textSizeSlider.addEventListener('input', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10), { skipSlider: true });
+    });
+
+    // While typing, stay lenient (allow empty/partial); commit-clamp on change/blur.
+    textSizeInput.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (!Number.isFinite(v)) return;
+      setTextFontSize(v, { skipInput: true });
+    });
+    textSizeInput.addEventListener('change', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+    textSizeInput.addEventListener('blur', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+
+    // Close on outside mousedown, but never when interacting with the pop-up,
+    // the text button, or the live text input (so editing options mid-type works).
+    document.addEventListener('mousedown', (e) => {
+      if (!textPopover.classList.contains('hidden') &&
+          !textPopover.contains(e.target) &&
+          !btnText.contains(e.target) &&
+          !textInputEl.contains(e.target)) {
+        hideTextPopover();
+      }
     });
 
     document.getElementById('btn-undo').addEventListener('click', async () => {
@@ -2076,8 +2467,9 @@
       const worldPos = screenToWorld(screenX, screenY);
       pendingTextX = worldPos.x;
       pendingTextY = worldPos.y;
-      const screenFontSize = strokeWidth * 5 * scale;
+      const screenFontSize = textFontSize * scale;
       textInput.style.fontSize = screenFontSize + 'px';
+      textInput.style.fontFamily = textFontFamily;
       textInput.style.color = strokeColor;
       textInput.style.left = screenX + 'px';
       textInput.style.top = (screenY - screenFontSize * 0.8) + 'px';
@@ -2085,6 +2477,7 @@
       textInput.value = '';
       textInput.style.display = 'block';
       measure.style.fontSize = screenFontSize + 'px';
+      measure.style.fontFamily = textFontFamily;
       textInput.focus();
     }
 
@@ -2101,7 +2494,8 @@
         y: pendingTextY,
         text: text,
         color: strokeColor,
-        fontSize: strokeWidth * 5,
+        fontSize: textFontSize,
+        fontFamily: textFontFamily,
         dx: 0,
         dy: 0
       };
@@ -2143,6 +2537,320 @@
     textInputEl.addEventListener('blur', () => {
       commitText();
     });
+
+    // ===== Comment threads (pinned conversations) =====
+
+    let threads = [];
+    let openThreadId = null;
+    let composerWorld = null;   // world coords for the in-progress new thread
+    let composerAnchor = null;  // { id, dx, dy } when the click landed on an element
+    let currentUserId = null;
+    try {
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        currentUserId = payload.id != null ? String(payload.id) : null;
+      }
+    } catch (_) {}
+
+    const pinLayer = document.getElementById('pin-layer');
+    const pinEls = new Map(); // thread id -> pin button element
+
+    // Bounding box of a drawable element in world space, or null when it has
+    // none (free-form pen strokes are excluded). Returns {minX,minY,maxX,maxY}.
+    function elementBBox(item) {
+      if (!item) return null;
+      if (item.type === 'shape') {
+        return {
+          minX: Math.min(item.x0, item.x1), minY: Math.min(item.y0, item.y1),
+          maxX: Math.max(item.x0, item.x1), maxY: Math.max(item.y0, item.y1)
+        };
+      }
+      if (item.type === 'image') {
+        return { minX: item.x, minY: item.y, maxX: item.x + item.width, maxY: item.y + item.height };
+      }
+      if (item.type === 'emoji') {
+        const h = item.size || EMOJI_SIZE;
+        return { minX: item.x - h / 2, minY: item.y - h / 2, maxX: item.x + h / 2, maxY: item.y + h / 2 };
+      }
+      if (item.type === 'text') {
+        const fs = item.fontSize || 16;
+        const w = Math.max(1, (item.text ? item.text.length : 1)) * fs * 0.6;
+        return { minX: item.x, minY: item.y - fs, maxX: item.x + w, maxY: item.y };
+      }
+      return null;
+    }
+
+    function bboxCenter(b) { return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }; }
+
+    // Topmost (newest) element whose bbox contains world point (wx,wy), or null.
+    function hitTestElement(wx, wy) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const item = strokes[i].stroke_data || strokes[i];
+        const b = elementBBox(item);
+        if (b && wx >= b.minX && wx <= b.maxX && wy >= b.minY && wy <= b.maxY) {
+          return { id: strokes[i].id, center: bboxCenter(b) };
+        }
+      }
+      return null;
+    }
+
+    // Current world position of a thread. Anchored threads track their
+    // element's bbox centre + stored offset; if the element is gone (deleted
+    // or cleared), fall back to the thread's stored absolute x/y.
+    function threadWorldPos(t) {
+      if (t.anchor_stroke_id != null && t.anchor_dx != null && t.anchor_dy != null) {
+        const s = strokes.find((s) => s.id === t.anchor_stroke_id);
+        if (s) {
+          const b = elementBBox(s.stroke_data || s);
+          if (b) {
+            const c = bboxCenter(b);
+            return { x: c.x + t.anchor_dx, y: c.y + t.anchor_dy };
+          }
+        }
+      }
+      return { x: t.x, y: t.y };
+    }
+
+    // Reconcile pin DOM with `threads` and reposition every pin from its world
+    // coords. Called from redrawAll(), so it runs on every viewport change.
+    function updatePins() {
+      if (!pinLayer) return;
+      for (const [id, el] of pinEls) {
+        if (!threads.some((t) => t.id === id)) { el.remove(); pinEls.delete(id); }
+      }
+      for (const t of threads) {
+        let el = pinEls.get(t.id);
+        if (!el) {
+          el = document.createElement('button');
+          el.className = 'absolute -translate-x-1/2 -translate-y-full flex items-center justify-center w-7 h-7 rounded-full rounded-bl-none bg-violet-600 text-white text-[11px] font-medium shadow-lg border-2 border-white dark:border-zinc-800 hover:bg-violet-700 transition-colors';
+          el.style.pointerEvents = 'auto';
+          el.title = 'Open comment thread';
+          el.addEventListener('click', (ev) => { ev.stopPropagation(); openThreadPanel(t.id); });
+          pinLayer.appendChild(el);
+          pinEls.set(t.id, el);
+        }
+        const detached = t.anchor_stroke_id == null && (t.anchor_dx != null || t.anchor_dy != null);
+        el.classList.toggle('opacity-60', detached);
+        el.textContent = String((t.replies && t.replies.length) || 1);
+        const wp = threadWorldPos(t);
+        const sp = worldToScreen(wp.x, wp.y);
+        if (sp.x < -40 || sp.y < -40 || sp.x > window.innerWidth + 40 || sp.y > window.innerHeight + 40) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = 'flex';
+          el.style.left = sp.x + 'px';
+          el.style.top = sp.y + 'px';
+        }
+      }
+    }
+
+    function positionPopover(el, sx, sy, display) {
+      el.classList.remove('hidden');
+      el.style.display = display || 'block';
+      const rect = el.getBoundingClientRect();
+      let left = sx + 12;
+      let top = sy + 12;
+      if (left + rect.width > window.innerWidth - 8) left = sx - rect.width - 12;
+      if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
+      el.style.left = Math.max(8, left) + 'px';
+      el.style.top = Math.max(8, top) + 'px';
+    }
+
+    // --- New-thread composer ---
+    function openComposer(screenX, screenY) {
+      closeThreadPanel();
+      const world = screenToWorld(screenX, screenY);
+      composerWorld = world;
+      const hit = hitTestElement(world.x, world.y);
+      const note = document.getElementById('composer-attach-note');
+      if (hit) {
+        composerAnchor = { id: hit.id, dx: world.x - hit.center.x, dy: world.y - hit.center.y };
+        note.classList.remove('hidden');
+      } else {
+        composerAnchor = null;
+        note.classList.add('hidden');
+      }
+      const composer = document.getElementById('comment-composer');
+      document.getElementById('composer-text').value = '';
+      positionPopover(composer, screenX, screenY, 'block');
+      document.getElementById('composer-text').focus();
+    }
+
+    function hideComposer() {
+      const composer = document.getElementById('comment-composer');
+      composer.style.display = 'none';
+      composer.classList.add('hidden');
+      composerWorld = null;
+      composerAnchor = null;
+    }
+
+    async function submitComposer() {
+      const body = document.getElementById('composer-text').value;
+      if (!body.trim() || !composerWorld) { hideComposer(); return; }
+      const payload = { x: composerWorld.x, y: composerWorld.y, body: body.trim() };
+      if (composerAnchor) {
+        payload.anchor_stroke_id = composerAnchor.id;
+        payload.anchor_dx = composerAnchor.dx;
+        payload.anchor_dy = composerAnchor.dy;
+      }
+      hideComposer();
+      try {
+        const res = await fetch('/api/threads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const thread = await res.json();
+          if (!threads.some((t) => t.id === thread.id)) threads.push(thread);
+          updatePins();
+          openThreadPanel(thread.id);
+        } else {
+          showStatus('Comment failed');
+        }
+      } catch (err) {
+        console.error('Create thread failed:', err);
+        showStatus('Comment failed');
+      }
+      setActiveTool('pen');
+    }
+
+    // --- Open-thread panel ---
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function relativeTime(iso) {
+      const then = new Date(iso).getTime();
+      if (!then) return '';
+      const m = Math.floor((Date.now() - then) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    }
+
+    function renderThreadReplies(t) {
+      const wrap = document.getElementById('thread-replies');
+      wrap.innerHTML = '';
+      for (const r of (t.replies || [])) {
+        const div = document.createElement('div');
+        div.innerHTML =
+          '<div class="flex items-baseline gap-2 mb-0.5">' +
+            '<span class="text-xs font-medium text-zinc-700 dark:text-zinc-200">' + escapeHtml(r.username) + '</span>' +
+            '<span class="text-[10px] text-zinc-400">' + relativeTime(r.created_at) + '</span>' +
+          '</div>' +
+          '<div class="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">' + escapeHtml(r.body) + '</div>';
+        wrap.appendChild(div);
+      }
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    function openThreadPanel(id) {
+      const t = threads.find((t) => t.id === id);
+      if (!t) return;
+      openThreadId = id;
+      hideComposer();
+      renderThreadReplies(t);
+      const delBtn = document.getElementById('thread-delete');
+      delBtn.classList.toggle('hidden', !(currentUserId != null && String(t.user_id) === currentUserId));
+      document.getElementById('reply-text').value = '';
+      const panel = document.getElementById('thread-panel');
+      const wp = threadWorldPos(t);
+      const sp = worldToScreen(wp.x, wp.y);
+      positionPopover(panel, sp.x, sp.y, 'flex');
+    }
+
+    function closeThreadPanel() {
+      openThreadId = null;
+      const panel = document.getElementById('thread-panel');
+      panel.style.display = 'none';
+      panel.classList.add('hidden');
+    }
+
+    async function submitReply() {
+      if (openThreadId == null) return;
+      const ta = document.getElementById('reply-text');
+      const body = ta.value;
+      if (!body.trim()) return;
+      ta.value = '';
+      try {
+        const res = await fetch('/api/threads/' + openThreadId + '/replies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ body: body.trim() })
+        });
+        if (res.ok) {
+          const reply = await res.json();
+          const t = threads.find((t) => t.id === reply.thread_id);
+          if (t) {
+            t.replies = t.replies || [];
+            if (!t.replies.some((r) => r.id === reply.id)) t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        } else {
+          showStatus('Reply failed');
+        }
+      } catch (err) {
+        console.error('Reply failed:', err);
+        showStatus('Reply failed');
+      }
+    }
+
+    async function deleteOpenThread() {
+      if (openThreadId == null) return;
+      const id = openThreadId;
+      try {
+        await fetch('/api/threads/' + id, { method: 'DELETE', headers: { ...headers } });
+      } catch (err) {
+        console.error('Delete thread failed:', err);
+      }
+      const idx = threads.findIndex((t) => t.id === id);
+      if (idx !== -1) threads.splice(idx, 1);
+      closeThreadPanel();
+      updatePins();
+    }
+
+    document.getElementById('composer-submit').addEventListener('click', submitComposer);
+    document.getElementById('composer-cancel').addEventListener('click', () => { hideComposer(); setActiveTool('pen'); });
+    document.getElementById('composer-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitComposer(); }
+      else if (e.key === 'Escape') { e.preventDefault(); hideComposer(); setActiveTool('pen'); }
+    });
+    document.getElementById('reply-submit').addEventListener('click', submitReply);
+    document.getElementById('thread-close').addEventListener('click', closeThreadPanel);
+    document.getElementById('thread-delete').addEventListener('click', deleteOpenThread);
+    document.getElementById('reply-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitReply(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeThreadPanel(); }
+    });
+
+    // Close the open thread panel when clicking outside it (but not on a pin —
+    // pin clicks switch panels via their own handler).
+    document.addEventListener('mousedown', (e) => {
+      const panel = document.getElementById('thread-panel');
+      if (openThreadId != null && !panel.contains(e.target) && !e.target.closest('#pin-layer')) {
+        closeThreadPanel();
+      }
+    });
+
+    async function loadThreads() {
+      try {
+        const res = await fetch('/api/threads', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        threads = data.threads || [];
+        updatePins();
+      } catch (err) {
+        console.error('Load threads failed:', err);
+      }
+    }
 
     async function saveStroke(strokeData) {
       try {
@@ -2221,6 +2929,40 @@
         redoActions = [];
         deselectLayer();
         redrawAll();
+        // Strokes are gone; re-fetch threads so anchors that the server
+        // nulled (ON DELETE SET NULL) are reflected locally.
+        loadThreads();
+      });
+
+      es.addEventListener('thread', (e) => {
+        const data = JSON.parse(e.data);
+        if (!threads.some((t) => t.id === data.id)) {
+          threads.push(data);
+          updatePins();
+        }
+      });
+
+      es.addEventListener('reply', (e) => {
+        const reply = JSON.parse(e.data);
+        const t = threads.find((t) => t.id === reply.thread_id);
+        if (t) {
+          t.replies = t.replies || [];
+          if (!t.replies.some((r) => r.id === reply.id)) {
+            t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        }
+      });
+
+      es.addEventListener('thread-delete', (e) => {
+        const data = JSON.parse(e.data);
+        const idx = threads.findIndex((t) => t.id === data.id);
+        if (idx !== -1) {
+          threads.splice(idx, 1);
+          if (openThreadId === data.id) closeThreadPanel();
+          updatePins();
+        }
       });
 
       es.onerror = () => {
@@ -2284,6 +3026,7 @@
     window.addEventListener('resize', resize);
     resize();
     loadStrokes();
+    loadThreads();
     connectSSE();
   </script>
 </body>
