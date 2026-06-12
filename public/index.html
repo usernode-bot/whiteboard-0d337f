@@ -146,8 +146,12 @@
       align-items: center;
       justify-content: center;
       cursor: grab;
-      transition: all 0.15s;
+      transition: background 0.15s, box-shadow 0.15s;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      z-index: 51;
+    }
+    .toolbar-toggle.dragging {
+      transition: none;
     }
     .toolbar-toggle:hover {
       background: #f5f5f4;
@@ -176,11 +180,16 @@
       z-index: 50;
       max-height: 80vh;
       overflow-y: auto;
-      transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+      transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1), visibility 200ms;
       pointer-events: auto;
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
     }
     .toolbar-menu.hidden {
-      display: none;
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.95) translateY(-8px);
       pointer-events: none;
     }
     .dark .toolbar-menu {
@@ -2605,7 +2614,7 @@
 
     toolbarToggle.addEventListener('mouseleave', () => {
       toolbarCollapseTimeout = setTimeout(() => {
-        if (!toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
+        if (!isToolbarDragging && !toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
           toolbarMenu.classList.add('hidden');
         }
       }, 100);
@@ -2613,7 +2622,7 @@
 
     toolbarMenu.addEventListener('mouseleave', () => {
       toolbarCollapseTimeout = setTimeout(() => {
-        if (!toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
+        if (!isToolbarDragging && !toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
           toolbarMenu.classList.add('hidden');
         }
       }, 100);
@@ -2622,6 +2631,7 @@
     // Dragging
     toolbarToggle.addEventListener('mousedown', (e) => {
       isToolbarDragging = true;
+      toolbarToggle.classList.add('dragging');
       toolbarDragStart = { x: e.clientX, y: e.clientY };
       toolbarDragOffset = { x: toolbarPos.x - e.clientX, y: toolbarPos.y - e.clientY };
       closeAllPopovers();
@@ -2642,6 +2652,7 @@
 
     document.addEventListener('mouseup', () => {
       if (!isToolbarDragging) return;
+      toolbarToggle.classList.remove('dragging');
       isToolbarDragging = false;
       localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
     });
