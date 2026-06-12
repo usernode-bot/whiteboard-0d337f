@@ -2653,8 +2653,7 @@
       const t = e.touches[0];
       toolbarDragStart = { x: t.clientX, y: t.clientY };
       toolbarDragOffset = { x: toolbarPos.x - t.clientX, y: toolbarPos.y - t.clientY };
-      e.preventDefault();
-    }, { passive: false });
+    });
 
     document.addEventListener('touchmove', (e) => {
       if (!toolbarDragStart) return;
