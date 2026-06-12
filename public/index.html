@@ -135,8 +135,77 @@
       pointer-events: none;
       top: -9999px;
     }
+    .toolbar-toggle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: white;
+      border: 1px solid #e4e4e7;
+      color: #3f3f46;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      z-index: 51;
+    }
+    .toolbar-toggle.dragging {
+      transition: none;
+    }
+    .toolbar-toggle:hover {
+      background: #f5f5f4;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .toolbar-toggle:active {
+      cursor: grabbing;
+    }
+    .dark .toolbar-toggle {
+      background: #27272a;
+      border-color: #52525b;
+      color: #a1a1aa;
+    }
+    .dark .toolbar-toggle:hover {
+      background: #3f3f46;
+    }
+    .toolbar-menu {
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border: 1px solid #e4e4e7;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 50;
+      max-height: 80vh;
+      overflow-y: auto;
+      transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1), visibility 200ms;
+      pointer-events: auto;
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+    }
+    .toolbar-menu.hidden {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.95) translateY(-8px);
+      pointer-events: none;
+    }
+    .dark .toolbar-menu {
+      background: rgba(39, 39, 42, 0.95);
+      border-color: #52525b;
+    }
+    .toolbar-menu-content {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      max-width: 280px;
+    }
     @media (max-width: 640px) {
-      .toolbar { padding: 6px 8px !important; gap: 4px !important; }
+      .toolbar-menu-content { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
@@ -184,137 +253,150 @@
     </div>
   </div>
 
-  <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
-    <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-    </button>
-    <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
-    </button>
-    <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
-    </button>
-    <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-    </button>
-    <button id="btn-select" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Select / Move layer">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
-    </button>
-    <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
-    </button>
-    <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-    </button>
-    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-    </button>
-    <input type="file" id="image-input" accept="image/*" class="hidden">
+  <!-- Floating toolbar toggle button -->
+  <button id="toolbar-toggle" class="toolbar-toggle fixed" title="Toggle drawing tools" aria-label="Toggle drawing tools" aria-expanded="false">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+  </button>
 
-    <div class="relative">
-      <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
-        <!-- icon swapped in JS to reflect the selected shape -->
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+  <!-- Floating toolbar menu (expands on hover) -->
+  <div id="toolbar-menu" class="toolbar-menu fixed hidden">
+    <div class="toolbar-menu-content">
+      <!-- Drawing tools -->
+      <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
       </button>
-      <div id="shapes-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex gap-1">
-        <button data-shape="line" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Line">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+      <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
+      </button>
+      <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      </button>
+      <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      </button>
+      <button id="btn-select" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Select / Move layer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
+      </button>
+      <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+      </button>
+      <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+      </button>
+      <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </button>
+      <input type="file" id="image-input" accept="image/*" class="hidden">
+
+      <!-- Shapes tool with popover -->
+      <div class="relative">
+        <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
         </button>
-        <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+        <div id="shapes-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex gap-1">
+          <button data-shape="line" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Line">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+          </button>
+          <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+          </button>
+          <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Circle / Ellipse">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Layer actions (shown only when a layer is selected) -->
+      <div id="layer-actions" class="hidden items-center gap-1">
+        <button id="btn-front" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Bring to front">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>
         </button>
-        <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Circle / Ellipse">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+        <button id="btn-back" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Send to back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1"/><path d="M20 8v11a1 1 0 0 1-1 1H8"/></svg>
+        </button>
+        <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
         </button>
         <button data-shape="arrow" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Arrow">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>
         </button>
       </div>
-    </div>
 
-    <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <div id="layer-actions" class="hidden items-center gap-1">
-      <button id="btn-front" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Bring to front">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>
+      <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </button>
-      <button id="btn-back" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Send to back">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1"/><path d="M20 8v11a1 1 0 0 1-1 1H8"/></svg>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Color and size controls -->
+      <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
+        <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
       </button>
-      <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
+
+      <div class="flex items-center gap-1">
+        <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
+        <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
+        <span id="size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">3</span>
+      </div>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Undo/Redo -->
+      <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+      <button id="btn-redo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Redo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Utility buttons -->
+      <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
       </button>
-    </div>
 
-    <button id="btn-layers" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Layers">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
-      <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
-    </button>
-
-    <div class="flex items-center gap-1">
-      <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
-      <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
-      <span id="size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">3</span>
-    </div>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <button id="btn-redo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Redo">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <div class="relative">
-      <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
+      <button id="btn-layers" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Layers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </button>
-      <div id="bg-popover" class="hidden absolute top-12 right-0 bg-white border border-zinc-300 rounded-xl p-3 shadow-lg z-[60] w-44">
-        <p class="text-xs text-zinc-500 mb-2">Background</p>
-        <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
-        <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
-          <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
-          Custom
-        </label>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Background color -->
+      <div class="relative">
+        <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
+        </button>
+        <div id="bg-popover" class="hidden absolute top-12 right-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Background</p>
+          <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+          <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+            <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
+            Custom
+          </label>
+        </div>
       </div>
+
+      <button id="btn-home" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Reset View (Ctrl+0)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Export and theme -->
+      <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <button id="btn-theme" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Toggle dark mode">
+        <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
     </div>
-
-    <button id="btn-home" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Reset View (Ctrl+0)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-theme" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Toggle dark mode">
-      <!-- Moon: shown in light mode, hidden in dark mode -->
-      <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <!-- Sun: shown in dark mode, hidden in light mode -->
-      <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-    </button>
   </div>
 
   <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56 max-h-[70vh] overflow-y-auto">
@@ -444,6 +526,13 @@
     let shapeStart = null;
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
+
+    // Toolbar dragging state
+    let toolbarPos = { x: 0, y: 0 };
+    let isToolbarDragging = false;
+    let toolbarDragStart = null;
+    let toolbarDragOffset = { x: 0, y: 0 };
+    let toolbarCollapseTimeout = null;
 
     function setStrokeColor(hex) {
       strokeColor = hex;
@@ -3070,9 +3159,132 @@
     document.getElementById('export-dark-bg').addEventListener('click', () => { closeExportModal(); exportToPdf('#18181b'); });
     document.getElementById('export-transparent').addEventListener('click', () => { closeExportModal(); exportToPdf(null); });
 
+    // --- Floating toolbar initialization ---
+    const toolbarToggle = document.getElementById('toolbar-toggle');
+    const toolbarMenu = document.getElementById('toolbar-menu');
+
+    function initToolbarPosition() {
+      const saved = localStorage.getItem('whiteboard-toolbar-pos');
+      if (saved) {
+        try {
+          const pos = JSON.parse(saved);
+          // Validate position is within reasonable bounds
+          if (pos.x >= 0 && pos.x <= window.innerWidth && pos.y >= 0 && pos.y <= window.innerHeight) {
+            toolbarPos = pos;
+          } else {
+            // Reset if out of bounds
+            toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+          }
+        } catch (_) {
+          toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+        }
+      } else {
+        toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+      }
+      updateToolbarPosition();
+    }
+
+    function updateToolbarPosition() {
+      toolbarToggle.style.left = toolbarPos.x + 'px';
+      toolbarToggle.style.top = toolbarPos.y + 'px';
+      toolbarMenu.style.left = toolbarPos.x + 'px';
+      toolbarMenu.style.top = (toolbarPos.y + 48) + 'px';
+    }
+
+    function closeAllPopovers() {
+      document.getElementById('shapes-popover').classList.add('hidden');
+      document.getElementById('color-popover').classList.add('hidden');
+      document.getElementById('text-popover').classList.add('hidden');
+      document.getElementById('bg-popover').classList.add('hidden');
+    }
+
+    // Click to toggle menu
+    toolbarToggle.addEventListener('click', (e) => {
+      toolbarMenu.classList.toggle('hidden');
+      e.stopPropagation();
+    });
+
+    // Close menu when a tool is selected
+    document.querySelectorAll('.toolbar-menu .tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toolbarMenu.classList.add('hidden');
+      });
+    });
+
+    // Dragging (with threshold to distinguish from click)
+    toolbarToggle.addEventListener('mousedown', (e) => {
+      toolbarDragStart = { x: e.clientX, y: e.clientY };
+      toolbarDragOffset = { x: toolbarPos.x - e.clientX, y: toolbarPos.y - e.clientY };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!toolbarDragStart) return;
+      const distance = Math.hypot(e.clientX - toolbarDragStart.x, e.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
+      let newX = e.clientX + toolbarDragOffset.x;
+      let newY = e.clientY + toolbarDragOffset.y;
+      // Clamp to viewport (48px button, 20px margin)
+      newX = Math.max(20, Math.min(window.innerWidth - 68, newX));
+      newY = Math.max(20, Math.min(window.innerHeight - 68, newY));
+      toolbarPos = { x: newX, y: newY };
+      updateToolbarPosition();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
+      isToolbarDragging = false;
+      toolbarDragStart = null;
+    });
+
+    // Touch drag support for mobile
+    toolbarToggle.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      toolbarDragStart = { x: t.clientX, y: t.clientY };
+      toolbarDragOffset = { x: toolbarPos.x - t.clientX, y: toolbarPos.y - t.clientY };
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!toolbarDragStart) return;
+      const t = e.touches[0];
+      const distance = Math.hypot(t.clientX - toolbarDragStart.x, t.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
+      let newX = t.clientX + toolbarDragOffset.x;
+      let newY = t.clientY + toolbarDragOffset.y;
+      newX = Math.max(20, Math.min(window.innerWidth - 68, newX));
+      newY = Math.max(20, Math.min(window.innerHeight - 68, newY));
+      toolbarPos = { x: newX, y: newY };
+      updateToolbarPosition();
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
+      isToolbarDragging = false;
+      toolbarDragStart = null;
+    });
+
     window.addEventListener('resize', resize);
     updateUndoRedoButtons();
     resize();
+    initToolbarPosition();
     loadStrokes();
     loadThreads();
     connectSSE();
