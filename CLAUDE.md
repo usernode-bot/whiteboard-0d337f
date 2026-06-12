@@ -28,11 +28,30 @@ tables you've marked private), etc.
 
 ## About whiteboard
 
-_(add a sentence or two of product context here so Claude Code has a
-shared understanding of what this app is for)_
+A shared, real-time collaborative whiteboard. Every drawn item is a
+row in the `strokes` table and is broadcast to all connected clients
+over SSE. The board is intentionally communal: any user may move,
+reorder, hide, delete, or clear any item (no per-row ownership checks).
 
 ## App-specific conventions
 
-_(optional — e.g. "all currency values stored as integer cents, not
-floats"; "the `posts` table is append-only"; "avoid adding new
-dependencies"; etc.)_
+- **Everything is a layer.** Each `strokes` row has a JSONB
+  `stroke_data` discriminated by `type`. Shapes are:
+  - Freehand pen/rainbow/eraser: `{ points:[{x,y,w?}], color, width, eraser, rainbow, dx, dy, hidden? }`
+  - `{ type:'text', x, y, text, color, fontSize, fontFamily, dx, dy, hidden? }`
+  - `{ type:'emoji', emoji, x, y, size, dx, dy, hidden? }`
+  - `{ type:'image', src, x, y, w, h, dx, dy, hidden? }` (canonical image
+    shape — `src` is a data URL, `w`/`h` are world-space dimensions)
+  - `{ type:'shape', shape:'line'|'rect'|'circle'|'arrow', x0,y0,x1,y1, color, width, dx, dy, hidden? }`
+- **Moving never rewrites coordinates** — it accumulates a per-layer
+  `dx`/`dy` translation, applied centrally in `drawItem`.
+- **Stacking** is the explicit `z_index` column (`id` fallback for
+  legacy rows); reordering PATCHes `z_index` (numeric, or symbolic
+  `'front'`/`'back'`).
+- **`hidden: true`** hides a layer for everyone (shared state); it's
+  skipped by `redrawAll` and `hitTest`, restorable from the Layers panel.
+- **Undo/redo is client-local** (an action stack of add/delete/move/
+  reorder), reset on load and on clear. Don't try to make it collaborative.
+- All new item types persist through the existing
+  POST/PATCH/DELETE `/api/strokes` endpoints — `stroke_data` is JSONB,
+  so no migration is needed to add fields.
