@@ -397,6 +397,10 @@
         <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
     </div>
+
+    <button id="btn-zoom-out" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Zoom out">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+    </button>
   </div>
 
   <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56 max-h-[70vh] overflow-y-auto">
@@ -559,6 +563,8 @@
     let offsetY = 0;
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 20;
+    // Multiplicative step for the toolbar zoom-out button (~17% per click).
+    const ZOOM_STEP = 1.2;
     let hasInitialResize = false;
 
 
@@ -1415,6 +1421,12 @@
 
     function updateZoomIndicator() {
       document.getElementById('zoom-indicator').textContent = Math.round(scale * 100) + '%';
+    }
+
+    // Toolbar zoom-out: step the zoom down about the viewport center.
+    // zoomAtPoint clamps to MIN_SCALE, so repeated clicks stop at 5%.
+    function zoomOut() {
+      zoomAtPoint(canvas.width / 2, canvas.height / 2, scale / ZOOM_STEP);
     }
 
     function resetView() {
@@ -2524,6 +2536,7 @@
     });
 
     // Home button and zoom indicator click handlers
+    document.getElementById('btn-zoom-out').addEventListener('click', zoomOut);
     document.getElementById('btn-home').addEventListener('click', resetView);
     document.getElementById('zoom-indicator').addEventListener('click', resetView);
 
