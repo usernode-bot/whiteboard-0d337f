@@ -2601,31 +2601,17 @@
       document.getElementById('bg-popover').classList.add('hidden');
     }
 
-    // Hover expansion
-    toolbarToggle.addEventListener('mouseenter', () => {
-      toolbarMenu.classList.remove('hidden');
-      clearTimeout(toolbarCollapseTimeout);
+    // Click to toggle menu
+    toolbarToggle.addEventListener('click', (e) => {
+      toolbarMenu.classList.toggle('hidden');
+      e.stopPropagation();
     });
 
-    toolbarMenu.addEventListener('mouseenter', () => {
-      toolbarMenu.classList.remove('hidden');
-      clearTimeout(toolbarCollapseTimeout);
-    });
-
-    toolbarToggle.addEventListener('mouseleave', () => {
-      toolbarCollapseTimeout = setTimeout(() => {
-        if (!isToolbarDragging && !toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
-          toolbarMenu.classList.add('hidden');
-        }
-      }, 100);
-    });
-
-    toolbarMenu.addEventListener('mouseleave', () => {
-      toolbarCollapseTimeout = setTimeout(() => {
-        if (!isToolbarDragging && !toolbarToggle.matches(':hover') && !toolbarMenu.matches(':hover')) {
-          toolbarMenu.classList.add('hidden');
-        }
-      }, 100);
+    // Close menu when a tool is selected
+    document.querySelectorAll('.toolbar-menu .tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toolbarMenu.classList.add('hidden');
+      });
     });
 
     // Dragging
