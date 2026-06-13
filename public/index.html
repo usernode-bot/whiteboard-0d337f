@@ -1725,14 +1725,7 @@
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
-    document.getElementById('btn-eraser').addEventListener('click', () => {
-      if (tool === 'eraser') {
-        document.getElementById('eraser-popover').classList.toggle('hidden');
-      } else {
-        setActiveTool('eraser');
-        document.getElementById('eraser-popover').classList.remove('hidden');
-      }
-    });
+    document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
     document.getElementById('btn-text').addEventListener('click', () => {
       // Re-clicking while already on the text tool toggles the options pop-up.
       if (tool === 'text') {
@@ -1912,6 +1905,7 @@
 
     // --- Eraser popover ---
     (function initEraserPopover() {
+      const btn = document.getElementById('btn-eraser');
       const eraserPopover = document.getElementById('eraser-popover');
       const eraserSizeSlider = document.getElementById('eraser-size');
       const eraserSizeLabel = document.getElementById('eraser-size-label');
@@ -1924,6 +1918,28 @@
 
       eraserPopover.addEventListener('click', (e) => e.stopPropagation());
       document.addEventListener('click', () => hideEraserPopover());
+
+      // Long-press (~500 ms) opens the size popover; short tap just activates the tool.
+      let pressTimer = null;
+
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          setActiveTool('eraser');
+          showEraserPopover();
+          // The click event that fires after pointerup would immediately close
+          // the popover via the document click listener — suppress it once.
+          btn.addEventListener('click', (ev) => ev.stopPropagation(), { once: true });
+        }, 500);
+      });
+
+      function cancelPress() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      }
+      btn.addEventListener('pointerup', cancelPress);
+      btn.addEventListener('pointerleave', cancelPress);
+      btn.addEventListener('pointercancel', cancelPress);
     })();
 
     // Color palette button + popover
