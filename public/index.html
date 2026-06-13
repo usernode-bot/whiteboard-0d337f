@@ -474,9 +474,18 @@
       <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
       </button>
-      <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
-      </button>
+      <div class="relative">
+        <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+        </button>
+        <div id="eraser-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Eraser size</p>
+          <div class="flex items-center gap-2">
+            <input id="eraser-size" type="range" min="5" max="60" value="20" class="flex-1">
+            <span id="eraser-size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">20</span>
+          </div>
+        </div>
+      </div>
       <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
       </button>
@@ -628,6 +637,12 @@
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
     </label>
+    <div class="border-t border-zinc-200 dark:border-zinc-700 my-2"></div>
+    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-1">Size</p>
+    <div class="flex items-center gap-2">
+      <input id="stroke-size" type="range" min="1" max="40" value="3" class="flex-1">
+      <span id="size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">3</span>
+    </div>
   </div>
 
   <div id="emoji-picker" class="panel-surface fixed top-20 left-1/2 -translate-x-1/2 rounded-2xl p-3 z-50 hidden max-w-[96vw]">
@@ -784,6 +799,7 @@
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
     let strokeWidth = 3;
+    let eraserWidth = 20;
     let isDrawing = false;
     const brushCursor = document.getElementById('brush-cursor');
 
@@ -1019,7 +1035,7 @@
         brushCursor.style.display = 'none';
         return;
       }
-      const size = strokeWidth * scale;
+      const size = (tool === 'eraser' ? eraserWidth : strokeWidth) * scale;
       const displaySize = Math.max(size, 4);
       brushCursor.style.width = displaySize + 'px';
       brushCursor.style.height = displaySize + 'px';
@@ -1607,6 +1623,7 @@
       }
     }
 
+
     function deleteSelected() {
       if (!selectedLayer) return;
       const layer = selectedLayer;
@@ -1781,10 +1798,18 @@
 
     // --- Action-history undo/redo ---
 
+    function syncUndoRedoButtons() {
+      const btnUndo = document.getElementById('btn-undo');
+      const btnRedo = document.getElementById('btn-redo');
+      const dc = ['opacity-40', 'cursor-not-allowed', 'pointer-events-none'];
+      if (undoStack.length === 0) btnUndo.classList.add(...dc); else btnUndo.classList.remove(...dc);
+      if (redoActions.length === 0) btnRedo.classList.add(...dc); else btnRedo.classList.remove(...dc);
+    }
+
     function recordAction(a) {
       undoStack.push(a);
       redoActions = [];
-      updateUndoRedoButtons();
+      syncUndoRedoButtons();
     }
 
     async function recreateLayer(action) {
@@ -1937,6 +1962,7 @@
       if (newTool !== 'shape') hideShapesPopover();
       if (newTool !== 'comment') hideComposer();
       if (newTool !== 'text') hideTextPopover(); else showTextPopover();
+      if (newTool !== 'eraser') hideEraserPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
@@ -2016,10 +2042,7 @@
 
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
-      // Freehand tools and the shape tool draw here. Eraser deletes whole
-      // layers, select moves them, and move/text/emoji/image are handled
-      // elsewhere.
-      if (tool !== 'pen' && tool !== 'rainbow' && !isShapeTool()) return;
+      if (tool !== 'pen' && tool !== 'rainbow' && tool !== 'eraser' && !isShapeTool()) return;
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
@@ -2027,6 +2050,17 @@
         shapeStart = pos;
         shapeEnd = pos;
         currentStroke = null;
+        return;
+      }
+      if (tool === 'eraser') {
+        currentStroke = {
+          points: [pos],
+          color: '#000000',
+          width: eraserWidth,
+          eraser: true,
+          rainbow: false,
+          emaWidth: null
+        };
         return;
       }
       pos.t = performance.now();
@@ -2272,13 +2306,6 @@
         beginLayerDrag(getPos(e));
         return;
       }
-      // Object eraser: delete whole layers under the pointer
-      if (tool === 'eraser' && e.button === 0) {
-        e.preventDefault();
-        isErasing = true;
-        eraseAt(getPos(e));
-        return;
-      }
       startDraw(e);
     });
 
@@ -2329,7 +2356,6 @@
       }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
-      if (isErasing) { isErasing = false; return; }
       endDraw(e);
     });
 
@@ -2342,7 +2368,6 @@
       }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
-      if (isErasing) { isErasing = false; return; }
       endDraw(e);
     });
 
@@ -2463,13 +2488,6 @@
         return;
       }
 
-      // Object eraser: delete whole layers under the touch
-      if (tool === 'eraser') {
-        e.preventDefault();
-        if (e.touches.length === 1) { isErasing = true; eraseAt(getPos(e)); }
-        return;
-      }
-
       // Drawing mode (single touch)
       if (e.touches.length === 1) {
         updateBrushCursor();
@@ -2528,12 +2546,6 @@
           if (isResizingLayer) updateResize(getPos(e));
           else if (isDraggingLayer) updateLayerDrag(getPos(e));
         }
-        return;
-      }
-
-      if (tool === 'eraser') {
-        e.preventDefault();
-        if (isErasing && e.touches.length === 1) eraseAt(getPos(e));
         return;
       }
 
@@ -2685,6 +2697,8 @@
       prism: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>'
     };
     function hideShapesPopover() { shapesPopover.classList.add('hidden'); }
+    function hideEraserPopover() { document.getElementById('eraser-popover').classList.add('hidden'); }
+    function showEraserPopover() { document.getElementById('eraser-popover').classList.remove('hidden'); }
     function setShapeIcon() {
       btnShapes.innerHTML = SHAPE_ICONS[shapeType] || SHAPE_ICONS.line;
     }
@@ -2771,6 +2785,45 @@
       });
     });
     document.addEventListener('click', () => hideShapesPopover());
+
+    // --- Eraser popover ---
+    (function initEraserPopover() {
+      const btn = document.getElementById('btn-eraser');
+      const eraserPopover = document.getElementById('eraser-popover');
+      const eraserSizeSlider = document.getElementById('eraser-size');
+      const eraserSizeLabel = document.getElementById('eraser-size-label');
+
+      eraserSizeSlider.addEventListener('input', (e) => {
+        eraserWidth = parseInt(e.target.value);
+        eraserSizeLabel.textContent = eraserWidth;
+        updateBrushCursor();
+      });
+
+      eraserPopover.addEventListener('click', (e) => e.stopPropagation());
+      document.addEventListener('click', () => hideEraserPopover());
+
+      // Long-press (~500 ms) opens the size popover; short tap just activates the tool.
+      let pressTimer = null;
+
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          setActiveTool('eraser');
+          showEraserPopover();
+          // The click event that fires after pointerup would immediately close
+          // the popover via the document click listener — suppress it once.
+          btn.addEventListener('click', (ev) => ev.stopPropagation(), { once: true });
+        }, 500);
+      });
+
+      function cancelPress() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      }
+      btn.addEventListener('pointerup', cancelPress);
+      btn.addEventListener('pointerleave', cancelPress);
+      btn.addEventListener('pointercancel', cancelPress);
+    })();
 
     // --- Premium brush purchase flow ---
     const brushModal = document.getElementById('brush-modal');
@@ -3048,17 +3101,19 @@
     document.getElementById('btn-undo').addEventListener('click', async () => {
       if (undoStack.length === 0) return;
       const a = undoStack.pop();
+      syncUndoRedoButtons();
       await applyUndo(a);
       redoActions.push(a);
-      updateUndoRedoButtons();
+      syncUndoRedoButtons();
     });
 
     document.getElementById('btn-redo').addEventListener('click', async () => {
       if (redoActions.length === 0) return;
       const a = redoActions.pop();
+      syncUndoRedoButtons();
       await applyRedo(a);
       undoStack.push(a);
-      updateUndoRedoButtons();
+      syncUndoRedoButtons();
     });
 
     // Layers panel toggle
@@ -3121,6 +3176,7 @@
       updateUndoRedoButtons();
       deselectLayer();
       redrawAll();
+      syncUndoRedoButtons();
     });
 
     document.getElementById('btn-theme').addEventListener('click', () => {
@@ -3705,6 +3761,7 @@
         sortStrokes();
         redrawAll();
         showStatus('Board refreshed');
+        syncUndoRedoButtons();
       } catch (err) {
         console.error('Load failed:', err);
       } finally {
@@ -3980,6 +4037,7 @@
     loadStrokes();
     loadThreads();
     connectSSE();
+    syncUndoRedoButtons();
   </script>
 </body>
 </html>
