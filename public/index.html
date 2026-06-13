@@ -77,35 +77,140 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Usernode bridge — centrally hosted, never vendored. Powers on-chain
        sendTransaction for the premium-brush unlock. -->
   <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
-    canvas { display: block; cursor: crosshair; }
-    .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-    .tool-btn { transition: all 0.15s; }
-
+    /* ============================================================
+       Design tokens — single source of truth.
+       Accent: violet #7c3aed (brand). Neutrals: Tailwind zinc ramp.
+       Surfaces, borders, text and shadows are themed for light/dark
+       via the .dark class toggle so everything responds at runtime.
+       ============================================================ */
     :root {
-      --btn-color: #3f3f46;
-      --btn-hover-bg: rgba(124, 58, 237, 0.15);
-      --range-bg: #3f3f46;
+      --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+      --accent: #7c3aed;
+      --accent-hover: #6d28d9;
+      --accent-soft: rgba(124, 58, 237, 0.15);
+      --on-accent: #ffffff;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+
+      --surface-panel: rgba(255, 255, 255, 0.92);
+      --surface-popover: #ffffff;
+      --surface-modal: #ffffff;
+      --surface-hover: rgba(24, 24, 27, 0.06);
+
+      --border-hairline: rgba(24, 24, 27, 0.10);
+      --divider: rgba(24, 24, 27, 0.08);
+
+      --text-primary: #18181b;
+      --text-secondary: #52525b;
+      --text-muted: #71717a;
+
+      /* control internals (names kept for back-compat with existing CSS) */
+      --btn-color: #52525b;
+      --btn-hover-bg: rgba(124, 58, 237, 0.10);
+      --range-bg: #d4d4d8;
       --swatch-border: #d4d4d8;
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-panel: 0 8px 24px -8px rgba(24, 24, 27, 0.18), 0 2px 6px -2px rgba(24, 24, 27, 0.10);
+      --shadow-popover: 0 12px 28px -10px rgba(24, 24, 27, 0.30), 0 2px 6px -2px rgba(24, 24, 27, 0.12);
+      --shadow-modal: 0 24px 50px -12px rgba(24, 24, 27, 0.45);
+
+      --focus-ring: 0 0 0 2px var(--surface-popover), 0 0 0 4px var(--accent);
+
+      --grid-dot: rgba(24, 24, 27, 0.07);
     }
     .dark {
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-soft: rgba(167, 139, 250, 0.20);
+      --on-accent: #ffffff;
+
+      --surface-panel: rgba(39, 39, 42, 0.92);
+      --surface-popover: #27272a;
+      --surface-modal: #27272a;
+      --surface-hover: rgba(255, 255, 255, 0.07);
+
+      --border-hairline: rgba(255, 255, 255, 0.10);
+      --divider: rgba(255, 255, 255, 0.10);
+
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
       --btn-color: #a1a1aa;
-      --btn-hover-bg: rgba(167, 139, 250, 0.20);
-      --range-bg: #71717a;
+      --btn-hover-bg: rgba(167, 139, 250, 0.16);
+      --range-bg: #52525b;
       --swatch-border: #52525b;
+
+      --shadow-panel: 0 8px 24px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.45);
+      --shadow-popover: 0 12px 28px -10px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5);
+      --shadow-modal: 0 24px 50px -12px rgba(0, 0, 0, 0.7);
+
+      --grid-dot: rgba(255, 255, 255, 0.06);
     }
 
-    .tool-btn { color: var(--btn-color); }
-    .tool-btn.active { background: #7c3aed; color: white; }
-    .tool-btn:not(.active):hover { background: var(--btn-hover-bg); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
+    body { font-family: var(--font-ui); color: var(--text-primary); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; }
+
+    /* Static dot-grid texture on the page background layer (behind the
+       transparent canvas) so it never touches stroke compositing or PDF
+       export. Does not track zoom by design. */
+    #grid-overlay {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: radial-gradient(var(--grid-dot) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+      background-position: -1px -1px;
+    }
+
+    /* Shared surfaces */
+    .toolbar {
+      background: var(--surface-panel);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-panel);
+      backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    }
+    .panel-surface {
+      background: var(--surface-popover);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-popover);
+    }
+    .modal-surface {
+      background: var(--surface-modal);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-modal);
+    }
+    .toolbar-divider { width: 1px; height: 24px; background: var(--divider); margin: 0 2px; border-radius: 1px; flex-shrink: 0; }
+    .panel-label { color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    .tool-btn {
+      color: var(--btn-color);
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+    .tool-btn.active { background: var(--accent); color: var(--on-accent); }
+    .tool-btn:not(.active):hover { background: var(--btn-hover-bg); color: var(--text-primary); }
+    .tool-btn:active { transform: scale(0.94); }
+    .tool-btn svg { width: 19px; height: 19px; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    /* selected swatch indicator */
+    .swatch-selected { box-shadow: 0 0 0 2px var(--surface-popover), 0 0 0 3px var(--accent) !important; }
+
     input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--range-bg); outline: none; }
-    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; }
-    input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; border: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
     input[type="color"] { -webkit-appearance: none; border: none; padding: 0; cursor: pointer; }
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
     input[type="color"]::-webkit-color-swatch { border: 2px solid var(--swatch-border); border-radius: 6px; }
@@ -127,17 +232,82 @@
       z-index: 60;
       display: none;
       caret-color: currentColor;
-      font-family: sans-serif;
+      font-family: var(--font-ui);
       white-space: pre;
     }
     #text-measure {
       position: fixed;
       visibility: hidden;
       white-space: pre;
-      font-family: sans-serif;
+      font-family: var(--font-ui);
       pointer-events: none;
       top: -9999px;
     }
+
+    /* Empty state — non-interactive hint shown on a blank board */
+    #empty-state {
+      position: fixed; inset: 0; z-index: 30;
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none; padding: 1rem;
+    }
+    #empty-state .empty-card { text-align: center; max-width: 22rem; }
+    #empty-state .empty-icon {
+      width: 56px; height: 56px; margin: 0 auto 1rem;
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--accent-soft); color: var(--accent);
+    }
+    #empty-state .empty-title { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); margin: 0 0 0.35rem; }
+    #empty-state .empty-sub { font-size: 0.875rem; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+    /* Loading indicator */
+    #loading-indicator {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); z-index: 45;
+      display: none; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.9rem; border-radius: 999px;
+      font-size: 0.8rem; color: var(--text-secondary);
+      background: var(--surface-popover);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-popover);
+    }
+    #loading-indicator.visible { display: flex; }
+
+    /* Modal buttons */
+    .modal-btn, .modal-btn-muted, .modal-btn-danger {
+      padding: 0.5rem 0.9rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .modal-btn {
+      border: 1px solid var(--border-hairline);
+      color: var(--text-primary);
+      background: transparent;
+    }
+    .modal-btn:hover { background: var(--surface-hover); }
+    .modal-btn-muted {
+      border: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .modal-btn-muted:hover { background: var(--surface-hover); color: var(--text-primary); }
+    .modal-btn-danger {
+      border: 1px solid transparent;
+      color: #ffffff;
+      background: var(--danger);
+    }
+    .modal-btn-danger:hover { background: var(--danger-hover); }
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid var(--range-bg);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .toolbar-toggle {
       width: 48px;
       height: 48px;
@@ -233,8 +403,24 @@
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
+  <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
+
+  <div id="empty-state" aria-hidden="true">
+    <div class="empty-card">
+      <div class="empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      </div>
+      <p class="empty-title">Your board is empty</p>
+      <p class="empty-sub">Pick a tool above and start drawing — this whiteboard is shared live with everyone.</p>
+    </div>
+  </div>
+
+  <div id="loading-indicator">
+    <span class="spinner"></span>
+    <span>Loading board…</span>
+  </div>
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
 
@@ -400,10 +586,10 @@
         <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
         </button>
-        <div id="bg-popover" class="hidden absolute top-12 right-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Background</p>
+        <div id="bg-popover" class="panel-surface hidden absolute top-12 right-0 rounded-xl p-3 z-[60] w-44">
+          <p class="panel-label mb-2">Background</p>
           <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
-          <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+          <label class="flex items-center gap-2 text-xs cursor-pointer" style="color: var(--text-secondary);">
             <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
             Custom
           </label>
@@ -434,23 +620,24 @@
     </button>
   </div>
 
-  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56 max-h-[70vh] overflow-y-auto">
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
+  <div id="color-popover" class="panel-surface hidden fixed rounded-xl p-3 z-[60] w-56 max-h-[70vh] overflow-y-auto">
+    <p class="panel-label mb-2">Color</p>
     <div id="color-swatches" class="grid grid-cols-6 gap-1.5 mb-2"></div>
-    <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+    <label class="flex items-center gap-2 text-xs cursor-pointer" style="color: var(--text-secondary);">
+
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
     </label>
   </div>
 
-  <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
+  <div id="emoji-picker" class="panel-surface fixed top-20 left-1/2 -translate-x-1/2 rounded-2xl p-3 z-50 hidden max-w-[96vw]">
     <div class="grid grid-cols-8 gap-1"></div>
   </div>
 
-  <div id="text-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-56">
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Text</p>
-    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Font</label>
-    <select id="text-font-family" class="w-full mb-3 px-2 py-1.5 text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
+  <div id="text-popover" class="panel-surface hidden fixed rounded-xl p-3 z-[60] w-56">
+    <p class="panel-label mb-2">Text</p>
+    <label class="block panel-label mb-1">Font</label>
+    <select id="text-font-family" class="w-full mb-3 px-2 py-1.5 text-sm rounded-lg border bg-transparent" style="border-color: var(--border-hairline); color: var(--text-primary);">
       <option value="sans-serif" style="font-family:sans-serif">Sans-serif</option>
       <option value="serif" style="font-family:serif">Serif</option>
       <option value="monospace" style="font-family:monospace">Monospace</option>
@@ -460,39 +647,39 @@
       <option value="'Courier New', monospace" style="font-family:'Courier New',monospace">Courier</option>
       <option value="'Comic Sans MS', cursive" style="font-family:'Comic Sans MS',cursive">Comic</option>
     </select>
-    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Size</label>
+    <label class="block panel-label mb-1">Size</label>
     <div class="flex items-center gap-2">
       <input id="text-size-slider" type="range" min="8" max="200" step="1" value="24" class="flex-1">
       <div class="flex items-center gap-0.5">
-        <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
-        <span class="text-xs text-zinc-400 dark:text-zinc-500">px</span>
+        <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border bg-transparent" style="border-color: var(--border-hairline); color: var(--text-primary);">
+        <span class="text-xs" style="color: var(--text-muted);">px</span>
       </div>
     </div>
   </div>
 
-  <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
+  <div id="zoom-indicator" class="toolbar fixed bottom-4 left-4 rounded-lg px-3 py-1.5 text-xs font-medium z-50 cursor-pointer select-none" style="color: var(--text-secondary);" title="Click to reset zoom">
     100%
   </div>
 
-  <div id="status-indicator" class="fixed bottom-4 right-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 opacity-0 pointer-events-none shadow transition-opacity duration-300">
+  <div id="status-indicator" class="toolbar fixed bottom-4 right-4 rounded-lg px-3 py-1.5 text-xs font-medium z-50 opacity-0 pointer-events-none transition-opacity duration-300" style="color: var(--text-secondary);">
     Saved
   </div>
 
-  <div id="export-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
-    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
-      <p class="text-zinc-800 dark:text-zinc-100 text-sm font-medium mb-4">Export PDF — choose background</p>
+  <div id="export-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(9,9,11,0.55); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);">
+    <div class="modal-surface rounded-2xl p-6 max-w-sm mx-4 text-center">
+      <p class="text-sm font-semibold mb-4" style="color: var(--text-primary);">Export PDF — choose background</p>
       <div class="flex gap-2 justify-center mb-4 flex-wrap">
-        <button id="export-light" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-300 bg-white inline-block flex-shrink-0"></span>Light
+        <button id="export-light" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border bg-white inline-block flex-shrink-0" style="border-color: var(--border-hairline);"></span>Light
         </button>
-        <button id="export-dark-bg" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-600 inline-block flex-shrink-0" style="background:#18181b"></span>Dark
+        <button id="export-dark-bg" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border inline-block flex-shrink-0" style="background:#18181b; border-color: var(--border-hairline);"></span>Dark
         </button>
-        <button id="export-transparent" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-300 dark:border-zinc-600 inline-block flex-shrink-0" style="background:repeating-conic-gradient(#d4d4d8 0% 25%,#ffffff 0% 50%) 0/8px 8px"></span>Transparent
+        <button id="export-transparent" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border inline-block flex-shrink-0" style="background:repeating-conic-gradient(#d4d4d8 0% 25%,#ffffff 0% 50%) 0/8px 8px; border-color: var(--border-hairline);"></span>Transparent
         </button>
       </div>
-      <button id="export-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+      <button id="export-cancel" class="modal-btn-muted">Cancel</button>
     </div>
   </div>
 
@@ -519,12 +706,12 @@
     </div>
   </div>
 
-  <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
-    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
-      <p id="confirm-msg" class="text-zinc-800 dark:text-zinc-100 text-sm mb-4"></p>
+  <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(9,9,11,0.55); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);">
+    <div class="modal-surface rounded-2xl p-6 max-w-sm mx-4 text-center">
+      <p id="confirm-msg" class="text-sm mb-5" style="color: var(--text-primary);"></p>
       <div class="flex gap-3 justify-center">
-        <button id="confirm-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
-        <button id="confirm-ok" class="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600">Clear</button>
+        <button id="confirm-cancel" class="modal-btn-muted">Cancel</button>
+        <button id="confirm-ok" class="modal-btn-danger">Clear</button>
       </div>
     </div>
   </div>
@@ -608,6 +795,16 @@
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
 
+    // Highlight the active swatch in a popover grid (color or background).
+    function syncSelectedSwatch(containerId, value) {
+      const wrap = document.getElementById(containerId);
+      if (!wrap) return;
+      const norm = (value || '').toLowerCase();
+      wrap.querySelectorAll('button[data-swatch]').forEach((b) => {
+        b.classList.toggle('swatch-selected', b.dataset.swatch.toLowerCase() === norm);
+      });
+    }
+
     // Toolbar dragging state
     let toolbarPos = { x: 0, y: 0 };
     let isToolbarDragging = false;
@@ -621,6 +818,7 @@
       if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
         document.getElementById('color-custom-stroke').value = hex;
       }
+      syncSelectedSwatch('color-swatches', hex);
     }
 
     // Sync color dot with initial theme
@@ -903,6 +1101,7 @@
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (!noSelection) drawSelectionOverlay();
+      if (typeof updateEmptyState === 'function') updateEmptyState();
       renderLayerPanel();
       updatePins();
     }
@@ -1775,7 +1974,7 @@
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = emoji;
-        b.className = 'w-9 h-9 rounded-lg flex items-center justify-center text-xl hover:bg-zinc-100';
+        b.className = 'w-9 h-9 rounded-lg flex items-center justify-center text-xl hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors';
         b.addEventListener('click', () => {
           selectedEmoji = emoji;
           hideEmojiPicker();
@@ -2703,7 +2902,9 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-6 h-6 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.dataset.swatch = color;
+        sw.className = 'w-6 h-6 rounded-md border hover:scale-110 transition-transform';
+        sw.style.borderColor = 'var(--swatch-border)';
         sw.addEventListener('click', () => {
           setStrokeColor(color);
           document.getElementById('color-popover').classList.add('hidden');
@@ -2711,6 +2912,7 @@
         });
         swatchWrap.appendChild(sw);
       });
+      syncSelectedSwatch('color-swatches', strokeColor);
 
       const btnColor = document.getElementById('btn-color');
       const colorPopover = document.getElementById('color-popover');
@@ -2996,9 +3198,16 @@
       '#dbeafe', '#fae8ff', '#27272a', '#0f172a'
     ];
 
+    const DEFAULT_BG_LIGHT = '#ffffff';
+    const DEFAULT_BG_DARK = '#18181b';
+
+    // The chosen background is the "paper": it's applied to the page body so
+    // it shows through the transparent canvas (and behind the dot grid). The
+    // canvas itself stays transparent so the grid texture remains visible and
+    // the eraser's destination-out compositing keeps working.
     function applyBackground(color) {
       document.body.style.backgroundColor = color;
-      canvas.style.backgroundColor = color;
+      canvas.style.backgroundColor = 'transparent';
     }
 
     function setBackground(color) {
@@ -3006,6 +3215,7 @@
       try { localStorage.setItem(BG_KEY, color); } catch (_) {}
       document.getElementById('bg-custom').value =
         /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#ffffff';
+      syncSelectedSwatch('bg-swatches', color);
     }
 
     (function initBackground() {
@@ -3015,7 +3225,9 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 hover:scale-110 transition-transform';
+        sw.dataset.swatch = color;
+        sw.className = 'w-7 h-7 rounded-md border hover:scale-110 transition-transform';
+        sw.style.borderColor = 'var(--swatch-border)';
         sw.addEventListener('click', () => {
           setBackground(color);
           document.getElementById('bg-popover').classList.add('hidden');
@@ -3041,7 +3253,10 @@
 
       let saved;
       try { saved = localStorage.getItem(BG_KEY); } catch (_) {}
-      setBackground(saved || '#ffffff');
+      // Theme-aware default when nothing is saved, so a first-time dark-mode
+      // user doesn't get a glaring white board. An explicit saved value wins.
+      const defaultBg = isDarkMode() ? DEFAULT_BG_DARK : DEFAULT_BG_LIGHT;
+      setBackground(saved || defaultBg);
     })();
 
     function showStatus(text) {
@@ -3049,6 +3264,22 @@
       el.textContent = text;
       el.style.opacity = '1';
       setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    }
+
+    // --- Empty / loading states (DOM only; never captured in PDF export) ---
+    let boardLoading = true;
+
+    function setLoading(on) {
+      boardLoading = on;
+      document.getElementById('loading-indicator').classList.toggle('visible', on);
+      updateEmptyState();
+    }
+
+    // The empty-state hint shows only once loading has resolved and the board
+    // is genuinely empty. It reacts to local edits and remote SSE events alike.
+    function updateEmptyState() {
+      const empty = !boardLoading && strokes.length === 0;
+      document.getElementById('empty-state').style.display = empty ? 'flex' : 'none';
     }
 
     // --- Text tool helpers ---
@@ -3476,6 +3707,8 @@
         showStatus('Board refreshed');
       } catch (err) {
         console.error('Load failed:', err);
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -3742,6 +3975,7 @@
     window.addEventListener('resize', resize);
     updateUndoRedoButtons();
     resize();
+    setLoading(true);
     initToolbarPosition();
     loadStrokes();
     loadThreads();
