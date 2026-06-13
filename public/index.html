@@ -77,6 +77,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Usernode bridge — centrally hosted, never vendored. Powers on-chain
+       sendTransaction for the premium-brush unlock. -->
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
@@ -317,8 +320,22 @@
           <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
           </button>
-          <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Circle / Ellipse">
+          <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Oval">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+          </button>
+          <button data-shape="arrow" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>
+          </button>
+          <button data-shape="triangle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Triangle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 L21 20 L3 20 Z"/></svg>
+          </button>
+          <button data-shape="heart" data-premium="1" class="shape-opt tool-btn relative w-9 h-9 rounded-lg flex items-center justify-center" title="Heart (premium)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>
+            <span class="lock-badge absolute -top-1 -right-1 text-[10px] leading-none">🔒</span>
+          </button>
+          <button data-shape="prism" data-premium="1" class="shape-opt tool-btn relative w-9 h-9 rounded-lg flex items-center justify-center" title="Prism (premium)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>
+            <span class="lock-badge absolute -top-1 -right-1 text-[10px] leading-none">🔒</span>
           </button>
         </div>
       </div>
@@ -335,9 +352,6 @@
         </button>
         <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-        </button>
-        <button data-shape="arrow" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Arrow">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>
         </button>
       </div>
 
@@ -479,6 +493,29 @@
         </button>
       </div>
       <button id="export-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+    </div>
+  </div>
+
+  <div id="brush-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
+      <p class="text-zinc-800 dark:text-zinc-100 text-base font-semibold mb-1">Unlock premium brushes</p>
+      <p class="text-zinc-500 dark:text-zinc-400 text-sm mb-4">A one-time payment unlocks the Heart and Prism brushes forever.</p>
+      <div class="flex gap-6 justify-center mb-4 text-zinc-700 dark:text-zinc-200">
+        <div class="flex flex-col items-center gap-1">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>
+          <span class="text-xs">Heart</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>
+          <span class="text-xs">Prism</span>
+        </div>
+      </div>
+      <p id="brush-price" class="text-zinc-800 dark:text-zinc-100 text-sm font-medium mb-4">One-time price: …</p>
+      <p id="brush-modal-status" class="text-xs text-zinc-500 dark:text-zinc-400 mb-3 min-h-[1rem]"></p>
+      <div class="flex gap-3 justify-center">
+        <button id="brush-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+        <button id="brush-unlock" class="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed">Unlock</button>
+      </div>
     </div>
   </div>
 
@@ -903,6 +940,53 @@
         const rx = Math.abs(s.x1 - s.x0) / 2;
         const ry = Math.abs(s.y1 - s.y0) / 2;
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else if (s.shape === 'triangle') {
+        // Isosceles triangle inscribed in the drag box: apex top-center.
+        const left = Math.min(s.x0, s.x1);
+        const right = Math.max(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const bottom = Math.max(s.y0, s.y1);
+        ctx.moveTo((left + right) / 2, top);
+        ctx.lineTo(right, bottom);
+        ctx.lineTo(left, bottom);
+        ctx.closePath();
+      } else if (s.shape === 'heart') {
+        // Heart fit to the drag box: two top lobes (bezier) meeting at a bottom
+        // tip. Parameterised by box width/height so it scales with the drag.
+        const left = Math.min(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const w = Math.abs(s.x1 - s.x0);
+        const h = Math.abs(s.y1 - s.y0);
+        const cx = left + w / 2;
+        const tipY = top + h;
+        const topY = top + h * 0.28;
+        ctx.moveTo(cx, tipY);
+        ctx.bezierCurveTo(left + w * 0.06, top + h * 0.66, left, top + h * 0.10, cx, topY);
+        ctx.bezierCurveTo(left + w, top + h * 0.10, left + w * 0.94, top + h * 0.66, cx, tipY);
+        ctx.closePath();
+      } else if (s.shape === 'prism') {
+        // Triangular prism glyph: a front triangle plus a back triangle offset
+        // up-right, with three edges connecting matching vertices.
+        const left = Math.min(s.x0, s.x1);
+        const right = Math.max(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const bottom = Math.max(s.y0, s.y1);
+        const w = right - left;
+        const h = bottom - top;
+        const ox = w * 0.28, oy = -h * 0.22; // depth offset toward back face
+        // Front triangle (apex top-center of the front face).
+        const fAx = left + w * 0.36, fAy = top + h * 0.18;
+        const fBx = left, fBy = bottom;
+        const fCx = left + w * 0.72, fCy = bottom;
+        // Back triangle = front shifted by the depth offset.
+        const bAx = fAx + ox, bAy = fAy + oy;
+        const bBx = fBx + ox, bBy = fBy + oy;
+        const bCx = fCx + ox, bCy = fCy + oy;
+        ctx.moveTo(fAx, fAy); ctx.lineTo(fBx, fBy); ctx.lineTo(fCx, fCy); ctx.closePath();
+        ctx.moveTo(bAx, bAy); ctx.lineTo(bBx, bBy); ctx.lineTo(bCx, bCy); ctx.closePath();
+        ctx.moveTo(fAx, fAy); ctx.lineTo(bAx, bAy);
+        ctx.moveTo(fBx, fBy); ctx.lineTo(bBx, bBy);
+        ctx.moveTo(fCx, fCy); ctx.lineTo(bCx, bCy);
       } else if (s.shape === 'arrow') {
         // Main shaft from start to end, plus an arrowhead at the end point.
         // Geometry is in world units so it scales with zoom like the shaft.
@@ -2209,7 +2293,10 @@
       line: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>',
       rect: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>',
       circle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>',
-      arrow: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>'
+      arrow: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>',
+      triangle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 L21 20 L3 20 Z"/></svg>',
+      heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>',
+      prism: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>'
     };
     function hideShapesPopover() { shapesPopover.classList.add('hidden'); }
     function setShapeIcon() {
@@ -2220,8 +2307,56 @@
         b.classList.toggle('active', b.dataset.shape === shapeType);
       });
     }
+
+    // --- Premium brush state (populated from GET /api/brushes) ---
+    const premiumBrushes = new Set();   // ids that require a purchase
+    const unlockedBrushes = new Set();  // premium ids this user has unlocked
+    let brushPrice = null;
+    let brushPayee = '';
+
+    function isBrushLocked(id) {
+      return premiumBrushes.has(id) && !unlockedBrushes.has(id);
+    }
+
+    // Show/hide the 🔒 badge on each premium option to reflect unlock state.
+    function renderBrushLocks() {
+      shapesPopover.querySelectorAll('.shape-opt[data-premium]').forEach((b) => {
+        const locked = isBrushLocked(b.dataset.shape);
+        const badge = b.querySelector('.lock-badge');
+        if (badge) badge.style.display = locked ? '' : 'none';
+        b.title = locked
+          ? (b.dataset.shape === 'heart' ? 'Heart (premium — locked)' : 'Prism (premium — locked)')
+          : (b.dataset.shape.charAt(0).toUpperCase() + b.dataset.shape.slice(1));
+      });
+    }
+
+    async function loadBrushes() {
+      try {
+        const res = await fetch('/api/brushes', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        premiumBrushes.clear();
+        (data.premium || []).forEach((id) => premiumBrushes.add(id));
+        unlockedBrushes.clear();
+        (data.unlocked || []).forEach((id) => unlockedBrushes.add(id));
+        brushPrice = typeof data.price === 'number' ? data.price : null;
+        brushPayee = data.payee || '';
+      } catch (err) {
+        console.error('Load brushes failed:', err);
+      }
+      renderBrushLocks();
+    }
+
+    // Treat premium shapes as locked until GET /api/brushes proves otherwise,
+    // so the lock badge / gating is correct during the pre-load window.
+    shapesPopover.querySelectorAll('.shape-opt[data-premium]').forEach((b) => {
+      premiumBrushes.add(b.dataset.shape);
+    });
+
     setShapeIcon();
     markActiveShapeOption();
+    renderBrushLocks();
+    loadBrushes();
 
     btnShapes.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2235,7 +2370,14 @@
     shapesPopover.addEventListener('click', (e) => e.stopPropagation());
     shapesPopover.querySelectorAll('.shape-opt').forEach((b) => {
       b.addEventListener('click', () => {
-        shapeType = b.dataset.shape;
+        const id = b.dataset.shape;
+        // Gate locked premium shapes: never assign shapeType, open the modal.
+        if (isBrushLocked(id)) {
+          hideShapesPopover();
+          openBrushModal();
+          return;
+        }
+        shapeType = id;
         setShapeIcon();
         markActiveShapeOption();
         setActiveTool('shape');
@@ -2243,6 +2385,105 @@
       });
     });
     document.addEventListener('click', () => hideShapesPopover());
+
+    // --- Premium brush purchase flow ---
+    const brushModal = document.getElementById('brush-modal');
+    const brushModalStatus = document.getElementById('brush-modal-status');
+    const brushUnlockBtn = document.getElementById('brush-unlock');
+    let purchaseInFlight = false;
+
+    function setBrushModalStatus(msg) { brushModalStatus.textContent = msg || ''; }
+
+    function openBrushModal() {
+      setBrushModalStatus('');
+      const priceEl = document.getElementById('brush-price');
+      priceEl.textContent = brushPrice != null
+        ? ('One-time price: ' + brushPrice)
+        : 'One-time price: unavailable';
+      const bridgeReady = !!(window.usernode && typeof window.usernode.sendTransaction === 'function');
+      brushUnlockBtn.disabled = purchaseInFlight || !bridgeReady || brushPrice == null || !brushPayee;
+      if (!bridgeReady) {
+        brushUnlockBtn.title = 'Payment bridge unavailable — try reloading.';
+        setBrushModalStatus('Payment bridge unavailable. Reload to try again.');
+      } else if (!brushPayee || brushPrice == null) {
+        brushUnlockBtn.title = 'Purchase is not configured yet.';
+        setBrushModalStatus('Purchases are not configured for this board.');
+      } else {
+        brushUnlockBtn.title = '';
+      }
+      brushModal.style.display = 'flex';
+      brushModal.classList.remove('hidden');
+    }
+
+    function closeBrushModal() {
+      brushModal.style.display = 'none';
+      brushModal.classList.add('hidden');
+    }
+
+    // Pull a transaction id out of whatever shape the bridge returns.
+    function extractTxId(result) {
+      if (!result) return null;
+      const keys = ['tx_id', 'txid', 'txId', 'hash', 'tx_hash', 'txHash', 'id'];
+      for (const k of keys) {
+        if (typeof result[k] === 'string' && result[k]) return result[k];
+      }
+      if (result.tx) return extractTxId(result.tx);
+      return null;
+    }
+
+    async function startPurchase() {
+      if (purchaseInFlight) return;
+      const bridge = window.usernode;
+      if (!bridge || typeof bridge.sendTransaction !== 'function') {
+        setBrushModalStatus('Payment bridge unavailable. Reload to try again.');
+        return;
+      }
+      if (!brushPayee || brushPrice == null) {
+        setBrushModalStatus('Purchases are not configured for this board.');
+        return;
+      }
+      purchaseInFlight = true;
+      brushUnlockBtn.disabled = true;
+      setBrushModalStatus('Awaiting payment confirmation…');
+      try {
+        const result = await bridge.sendTransaction(brushPayee, brushPrice, 'whiteboard:premium-brushes');
+        const txId = extractTxId(result);
+        if (!txId) {
+          setBrushModalStatus('Could not read the transaction id. Please try again.');
+          return;
+        }
+        const res = await fetch('/api/brushes/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ tx_id: txId })
+        });
+        if (!res.ok) {
+          setBrushModalStatus('Saving your unlock failed. Please try again.');
+          return;
+        }
+        const data = await res.json();
+        (data.unlocked || []).forEach((id) => unlockedBrushes.add(id));
+        renderBrushLocks();
+        closeBrushModal();
+        showStatus('Premium brushes unlocked');
+      } catch (err) {
+        const msg = (err && err.message) || '';
+        if (/cancel/i.test(msg)) {
+          setBrushModalStatus('Purchase cancelled.');
+        } else {
+          setBrushModalStatus('Purchase failed, try again.');
+        }
+      } finally {
+        purchaseInFlight = false;
+        // Re-enable unless the bridge/config is genuinely unavailable.
+        const bridgeReady = !!(window.usernode && typeof window.usernode.sendTransaction === 'function');
+        brushUnlockBtn.disabled = !bridgeReady || brushPrice == null || !brushPayee;
+      }
+    }
+
+    brushUnlockBtn.addEventListener('click', startPurchase);
+    document.getElementById('brush-cancel').addEventListener('click', closeBrushModal);
+    brushModal.addEventListener('click', (e) => { if (e.target === brushModal) closeBrushModal(); });
 
     // Color palette button + popover
     (function initColorPalette() {
