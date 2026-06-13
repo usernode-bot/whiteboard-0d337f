@@ -459,6 +459,9 @@
       <option value="Georgia, serif" style="font-family:Georgia,serif">Georgia</option>
       <option value="'Courier New', monospace" style="font-family:'Courier New',monospace">Courier</option>
       <option value="'Comic Sans MS', cursive" style="font-family:'Comic Sans MS',cursive">Comic</option>
+      <option value="Impact, sans-serif" style="font-family:Impact,sans-serif">Impact</option>
+      <option value="'Trebuchet MS', sans-serif" style="font-family:'Trebuchet MS',sans-serif">Trebuchet</option>
+      <option value="'Brush Script MT', cursive" style="font-family:'Brush Script MT',cursive">Brush Script</option>
     </select>
     <label class="block text-xs text-zinc-500 dark:text-zinc-400 mb-1">Size</label>
     <div class="flex items-center gap-2">
@@ -467,6 +470,17 @@
         <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100">
         <span class="text-xs text-zinc-400 dark:text-zinc-500">px</span>
       </div>
+    </div>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mt-3 mb-1">Style</label>
+    <div class="flex flex-col gap-1.5">
+      <label class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200 cursor-pointer">
+        <input id="text-shadow-toggle" type="checkbox" class="w-4 h-4 rounded">
+        Shadow
+      </label>
+      <label class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200 cursor-pointer">
+        <input id="text-highlight-toggle" type="checkbox" class="w-4 h-4 rounded">
+        Highlight
+      </label>
     </div>
   </div>
 
@@ -659,6 +673,20 @@
     // text size is governed solely by the text tool pop-up's size control.
     let textFontFamily = 'sans-serif';
     let textFontSize = 24;
+    // Readability styling for newly placed text (both off by default).
+    let textShadow = false;
+    let textHighlight = false;
+
+    // Shared appearance constants for text styling. Shadow blur/offset are
+    // scaled to the text's own fontSize so they stay proportional at any zoom.
+    const TEXT_SHADOW_COLOR = 'rgba(0,0,0,0.45)';
+    const TEXT_SHADOW_BLUR_RATIO = 0.18;
+    const TEXT_SHADOW_OFFSET_RATIO = 0.06;
+    const TEXT_HIGHLIGHT_FILL = 'rgba(253, 224, 71, 0.6)'; // soft amber
+    const TEXT_HIGHLIGHT_PAD_RATIO = 0.15; // horizontal padding, * fontSize
+    // CSS-side equivalents for the live DOM input preview while typing.
+    const TEXT_SHADOW_CSS = '0 1px 3px rgba(0,0,0,0.45)';
+    const TEXT_HIGHLIGHT_CSS = 'rgba(253, 224, 71, 0.6)';
 
     // Rainbow brush: hue advances this many degrees per recorded point.
     const RAINBOW_HUE_STEP = 8;
@@ -1018,9 +1046,39 @@
     function drawStroke(s) {
       if (s.type === 'text') {
         ctx.font = s.fontSize + 'px ' + (s.fontFamily || 'sans-serif');
-        ctx.fillStyle = s.color;
         ctx.globalCompositeOperation = 'source-over';
+        // Highlight panel behind the text (drawn first, never shadowed).
+        if (s.highlight) {
+          const w = ctx.measureText(s.text || '').width;
+          const pad = s.fontSize * TEXT_HIGHLIGHT_PAD_RATIO;
+          const top = s.y - s.fontSize;
+          const bottom = s.y + s.fontSize * 0.3;
+          const r = Math.min(pad, (bottom - top) / 2);
+          const x0 = s.x - pad, y0 = top, bw = w + pad * 2, bh = bottom - top;
+          ctx.fillStyle = TEXT_HIGHLIGHT_FILL;
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(x0, y0, bw, bh, r);
+          } else {
+            ctx.rect(x0, y0, bw, bh);
+          }
+          ctx.fill();
+        }
+        // Drop shadow wraps only the glyph fill, then is reset.
+        if (s.shadow) {
+          ctx.shadowColor = TEXT_SHADOW_COLOR;
+          ctx.shadowBlur = s.fontSize * TEXT_SHADOW_BLUR_RATIO;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = s.fontSize * TEXT_SHADOW_OFFSET_RATIO;
+        }
+        ctx.fillStyle = s.color;
         ctx.fillText(s.text, s.x, s.y);
+        if (s.shadow) {
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
         return;
       }
       if (s.type === 'image') {
@@ -1100,8 +1158,10 @@
         ctx.font = item.fontSize + 'px sans-serif';
         const w = ctx.measureText(item.text || '').width;
         ctx.restore();
-        // fillText uses left/alphabetic baseline at (x, y).
-        return { minX: item.x + dx, minY: item.y + dy - item.fontSize, maxX: item.x + dx + w, maxY: item.y + dy + item.fontSize * 0.3 };
+        // fillText uses left/alphabetic baseline at (x, y). When a highlight
+        // panel is drawn it extends horizontally by the padding on each side.
+        const pad = item.highlight ? item.fontSize * TEXT_HIGHLIGHT_PAD_RATIO : 0;
+        return { minX: item.x + dx - pad, minY: item.y + dy - item.fontSize, maxX: item.x + dx + w + pad, maxY: item.y + dy + item.fontSize * 0.3 };
       }
       if (item.type === 'emoji') {
         const h = item.size / 2;
@@ -2580,6 +2640,30 @@
     const textFontSelect = document.getElementById('text-font-family');
     const textSizeSlider = document.getElementById('text-size-slider');
     const textSizeInput = document.getElementById('text-size-input');
+    const textShadowToggle = document.getElementById('text-shadow-toggle');
+    const textHighlightToggle = document.getElementById('text-highlight-toggle');
+
+    // Mirror the canvas shadow/highlight look onto the live DOM input. A
+    // box-shadow spread extends the highlight background by the padding
+    // without shifting where the glyphs sit, so the preview tracks the
+    // committed result. Cleared when the toggles are off.
+    function applyTextDecorToInput() {
+      if (textShadow) {
+        textInputEl.style.textShadow = TEXT_SHADOW_CSS;
+      } else {
+        textInputEl.style.textShadow = '';
+      }
+      if (textHighlight) {
+        const pad = textFontSize * scale * TEXT_HIGHLIGHT_PAD_RATIO;
+        textInputEl.style.backgroundColor = TEXT_HIGHLIGHT_CSS;
+        textInputEl.style.boxShadow = '0 0 0 ' + pad + 'px ' + TEXT_HIGHLIGHT_CSS;
+        textInputEl.style.borderRadius = pad + 'px';
+      } else {
+        textInputEl.style.backgroundColor = 'transparent';
+        textInputEl.style.boxShadow = '';
+        textInputEl.style.borderRadius = '';
+      }
+    }
 
     function clampTextSize(n) {
       if (!Number.isFinite(n)) return textFontSize;
@@ -2608,6 +2692,7 @@
       textMeasureEl.style.fontFamily = textFontFamily;
       textMeasureEl.textContent = textInputEl.value || '';
       textInputEl.style.width = Math.max(4, textMeasureEl.offsetWidth + 4) + 'px';
+      applyTextDecorToInput();
     }
 
     function setTextFontSize(n, opts) {
@@ -2622,9 +2707,21 @@
     textFontSelect.value = textFontFamily;
     textSizeSlider.value = textFontSize;
     textSizeInput.value = textFontSize;
+    textShadowToggle.checked = textShadow;
+    textHighlightToggle.checked = textHighlight;
 
     textFontSelect.addEventListener('change', (e) => {
       textFontFamily = e.target.value;
+      applyTextStyleToOpenInput();
+    });
+
+    textShadowToggle.addEventListener('change', (e) => {
+      textShadow = e.target.checked;
+      applyTextStyleToOpenInput();
+    });
+
+    textHighlightToggle.addEventListener('change', (e) => {
+      textHighlight = e.target.checked;
       applyTextStyleToOpenInput();
     });
 
@@ -2883,7 +2980,16 @@
       textInput.style.display = 'block';
       measure.style.fontSize = screenFontSize + 'px';
       measure.style.fontFamily = textFontFamily;
+      applyTextDecorToInput();
       textInput.focus();
+    }
+
+    // Strip any shadow/highlight styling left on the hidden input.
+    function clearTextDecorFromInput() {
+      textInputEl.style.textShadow = '';
+      textInputEl.style.backgroundColor = 'transparent';
+      textInputEl.style.boxShadow = '';
+      textInputEl.style.borderRadius = '';
     }
 
     async function commitText() {
@@ -2892,6 +2998,7 @@
       const text = textInput.value;
       textInput.style.display = 'none';
       textInput.value = '';
+      clearTextDecorFromInput();
       if (!text.trim()) return;
       const strokeData = {
         type: 'text',
@@ -2901,6 +3008,8 @@
         color: strokeColor,
         fontSize: textFontSize,
         fontFamily: textFontFamily,
+        shadow: textShadow,
+        highlight: textHighlight,
         dx: 0,
         dy: 0
       };
@@ -2917,6 +3026,7 @@
       const textInput = document.getElementById('text-input');
       textInput.style.display = 'none';
       textInput.value = '';
+      clearTextDecorFromInput();
     }
 
     const textInputEl = document.getElementById('text-input');
