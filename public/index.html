@@ -570,6 +570,29 @@
     let dragOrigDx = 0;
     let dragOrigDy = 0;
     let layerMoved = false;
+    // Image resize-handle state (select tool).
+    let isResizingLayer = false;
+    let resizeDef = null;           // active handle descriptor (see HANDLE_DEFS)
+    let resizeAnchor = { x: 0, y: 0 };
+    let resizeOrig = { w: 0, h: 0, x: 0, y: 0 };
+    let resizeBefore = null;
+    let resizeChanged = false;
+    const RESIZE_HANDLE_R = 6;      // dot radius (screen px)
+    const RESIZE_HIT_R = 20;        // grab tolerance (screen px, finger-friendly)
+    const MIN_IMAGE_PX = 16;        // smallest world size while resizing
+    // 8 handles: 4 corners (aspect-locked) + 4 side midpoints (single axis).
+    // ax/ay: which dimension this handle resizes. anchorRight/anchorBottom:
+    // which edge stays pinned. corner: lock aspect ratio. cursor: hover cue.
+    const HANDLE_DEFS = [
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: true,  corner: true,  cursor: 'nwse-resize' }, // 0 TL
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: true,  corner: true,  cursor: 'nesw-resize' }, // 1 TR
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: false, corner: true,  cursor: 'nwse-resize' }, // 2 BR
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: false, corner: true,  cursor: 'nesw-resize' }, // 3 BL
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: true,  corner: false, cursor: 'ns-resize' },   // 4 top mid
+      { ax: 1, ay: 0, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ew-resize' },   // 5 right mid
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ns-resize' },   // 6 bottom mid
+      { ax: 1, ay: 0, anchorRight: true,  anchorBottom: false, corner: false, cursor: 'ew-resize' }    // 7 left mid
+    ];
     let isErasing = false;
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
@@ -913,10 +936,16 @@
     }
 
     function drawImageItem(item) {
-      const img = getImage(item.src);
+      // Tolerate the legacy {dataUrl,width,height} shape as well as the
+      // canonical {src,w,h} layer shape.
+      const src = item.src || item.dataUrl;
+      const w = item.w != null ? item.w : item.width;
+      const h = item.h != null ? item.h : item.height;
+      if (!src) return;
+      const img = getImage(src);
       if (img.complete && img.naturalWidth) {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(img, item.x, item.y, item.w, item.h);
+        ctx.drawImage(img, item.x, item.y, w, h);
       }
     }
 
@@ -1108,7 +1137,9 @@
         return { minX: item.x + dx - h, minY: item.y + dy - h, maxX: item.x + dx + h, maxY: item.y + dy + h };
       }
       if (item.type === 'image') {
-        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + item.w, maxY: item.y + dy + item.h };
+        const w = item.w != null ? item.w : item.width;
+        const h = item.h != null ? item.h : item.height;
+        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + w, maxY: item.y + dy + h };
       }
       if (item.type === 'shape') {
         // Bounding box spans both endpoints, padded for stroke width and any
@@ -1167,6 +1198,53 @@
       ctx.closePath();
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Images get 8 draggable handles (4 corners + 4 side midpoints) so they
+      // can be scaled. High-contrast (purple fill, white ring) to stay visible
+      // on any background.
+      if (item.type === 'image') {
+        const handles = getSelectedImageHandles();
+        if (handles) {
+          for (const c of handles) {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, RESIZE_HANDLE_R, 0, Math.PI * 2);
+            ctx.fillStyle = '#7c3aed';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // Screen-space positions of all 8 handles for the selected image, in the
+    // index order [TL,TR,BR,BL, top, right, bottom, left], or null.
+    function getSelectedImageHandles() {
+      if (!selectedLayer) return null;
+      const item = selectedLayer.stroke_data || selectedLayer;
+      if (item.type !== 'image') return null;
+      const b = getLayerBBox(item);
+      if (!b) return null;
+      const tl = worldToScreen(b.minX, b.minY);
+      const tr = worldToScreen(b.maxX, b.minY);
+      const br = worldToScreen(b.maxX, b.maxY);
+      const bl = worldToScreen(b.minX, b.maxY);
+      const mid = (a, c) => ({ x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 });
+      return [tl, tr, br, bl, mid(tl, tr), mid(tr, br), mid(br, bl), mid(bl, tl)];
+    }
+
+    // Index (0..7) of the handle under a screen point, or -1. Nearest wins so
+    // adjacent corner/side hit-zones don't fight.
+    function hitResizeHandle(sx, sy) {
+      const handles = getSelectedImageHandles();
+      if (!handles) return -1;
+      let best = -1, bestD = RESIZE_HIT_R;
+      for (let i = 0; i < handles.length; i++) {
+        const d = Math.hypot(handles[i].x - sx, handles[i].y - sy);
+        if (d <= bestD) { bestD = d; best = i; }
+      }
+      return best;
     }
 
     // --- Selection / layer manipulation ---
@@ -1248,6 +1326,78 @@
         recordAction({ type: 'move', id: selectedLayer.id, before: { dx: dragOrigDx, dy: dragOrigDy }, after: { dx: sd.dx || 0, dy: sd.dy || 0 } });
         patchLayer(selectedLayer.id, { stroke_data: sd });
       }
+    }
+
+    // Start scaling the selected image by dragging handle `handle` (0..7).
+    // We bake any pending dx/dy translation into x/y so resize math works in
+    // a single coordinate frame, and pin the edge/corner opposite the handle.
+    function beginResize(handle, pos) {
+      if (!selectedLayer) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      if (sd.type !== 'image') return;
+      const def = HANDLE_DEFS[handle];
+      if (!def) return;
+      // Normalize the legacy {width,height} shape to {w,h}.
+      if (sd.w == null && sd.width != null) { sd.w = sd.width; sd.h = sd.height; }
+      isResizingLayer = true;
+      resizeDef = def;
+      resizeChanged = false;
+      resizeBefore = { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 };
+      // Fold translation into position.
+      sd.x = sd.x + (sd.dx || 0);
+      sd.y = sd.y + (sd.dy || 0);
+      sd.dx = 0; sd.dy = 0;
+      resizeOrig = { w: sd.w, h: sd.h, x: sd.x, y: sd.y };
+      // Pinned edge stays fixed in world space.
+      resizeAnchor = {
+        x: def.anchorRight ? sd.x + sd.w : sd.x,
+        y: def.anchorBottom ? sd.y + sd.h : sd.y
+      };
+    }
+
+    function updateResize(pos) {
+      if (!isResizingLayer || !selectedLayer || !resizeDef) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      const def = resizeDef;
+      let newW = resizeOrig.w;
+      let newH = resizeOrig.h;
+      if (def.corner) {
+        // Corner: lock aspect, follow whichever axis the pointer moved further.
+        const pw = Math.abs(pos.x - resizeAnchor.x);
+        const ph = Math.abs(pos.y - resizeAnchor.y);
+        let f = Math.max(pw / resizeOrig.w, ph / resizeOrig.h);
+        const fMin = Math.max(MIN_IMAGE_PX / resizeOrig.w, MIN_IMAGE_PX / resizeOrig.h);
+        f = Math.max(f, fMin);
+        newW = resizeOrig.w * f;
+        newH = resizeOrig.h * f;
+      } else {
+        // Side midpoint: resize the single axis this handle controls.
+        if (def.ax) newW = Math.max(MIN_IMAGE_PX, Math.abs(pos.x - resizeAnchor.x));
+        if (def.ay) newH = Math.max(MIN_IMAGE_PX, Math.abs(pos.y - resizeAnchor.y));
+      }
+      sd.w = newW;
+      sd.h = newH;
+      sd.x = def.anchorRight ? resizeAnchor.x - newW : resizeAnchor.x;
+      sd.y = def.anchorBottom ? resizeAnchor.y - newH : resizeAnchor.y;
+      resizeChanged = true;
+      redrawAll();
+    }
+
+    function endResize() {
+      if (!isResizingLayer) return;
+      isResizingLayer = false;
+      resizeDef = null;
+      if (resizeChanged && selectedLayer && resizeBefore) {
+        const sd = selectedLayer.stroke_data || selectedLayer;
+        recordAction({
+          type: 'resize',
+          id: selectedLayer.id,
+          before: resizeBefore,
+          after: { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 }
+        });
+        patchLayer(selectedLayer.id, { stroke_data: sd });
+      }
+      resizeBefore = null;
     }
 
     function eraseAt(pos) {
@@ -1469,7 +1619,20 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.before);
       }
+    }
+
+    // Restore a saved image geometry snapshot {x,y,w,h,dx,dy}.
+    function applyGeometry(id, g) {
+      const l = findLayer(id);
+      if (!l) return;
+      const sd = l.stroke_data || l;
+      sd.x = g.x; sd.y = g.y; sd.w = g.w; sd.h = g.h;
+      sd.dx = g.dx || 0; sd.dy = g.dy || 0;
+      patchLayer(id, { stroke_data: sd });
+      redrawAll();
     }
 
     async function applyRedo(a) {
@@ -1493,6 +1656,8 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.after);
       }
     }
 
@@ -1507,6 +1672,13 @@
         sy = e.clientY;
       }
       return screenToWorld(sx, sy);
+    }
+
+    function getScreenPos(e) {
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
     }
 
     function zoomAtPoint(cx, cy, newScale) {
@@ -1892,9 +2064,12 @@
         openComposer(e.clientX, e.clientY);
         return;
       }
-      // Select tool: pick / start dragging a layer
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select' && e.button === 0) {
         e.preventDefault();
+        const sp = getScreenPos(e);
+        const corner = hitResizeHandle(sp.x, sp.y);
+        if (corner !== -1) { beginResize(corner, getPos(e)); return; }
         beginLayerDrag(getPos(e));
         return;
       }
@@ -1927,9 +2102,18 @@
         redrawAll();
         return;
       }
+      if (isResizingLayer) {
+        updateResize(getPos(e));
+        return;
+      }
       if (isDraggingLayer) {
         updateLayerDrag(getPos(e));
         return;
+      }
+      // Hover feedback over resize handles of a selected image.
+      if (tool === 'select') {
+        const h = hitResizeHandle(e.clientX, e.clientY);
+        canvas.style.cursor = h !== -1 ? HANDLE_DEFS[h].cursor : 'default';
       }
       if (isErasing) {
         eraseAt(getPos(e));
@@ -1944,6 +2128,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -1956,6 +2141,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -2066,10 +2252,15 @@
         return;
       }
 
-      // Select tool: pick / start dragging a layer
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select') {
         e.preventDefault();
-        if (e.touches.length === 1) beginLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          const sp = getScreenPos(e);
+          const corner = hitResizeHandle(sp.x, sp.y);
+          if (corner !== -1) beginResize(corner, getPos(e));
+          else beginLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -2134,7 +2325,10 @@
 
       if (tool === 'select') {
         e.preventDefault();
-        if (isDraggingLayer && e.touches.length === 1) updateLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          if (isResizingLayer) updateResize(getPos(e));
+          else if (isDraggingLayer) updateLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -2162,7 +2356,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -2179,7 +2373,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -2212,6 +2406,56 @@
     document.getElementById('btn-back').addEventListener('click', () => reorderSelected('back'));
     document.getElementById('btn-delete-layer').addEventListener('click', () => deleteSelected());
 
+    // Image insert — file picker, downscale, place centered in current view.
+    // The picker is opened by the native <label for> association (see the
+    // #btn-image label in the toolbar), which is far more reliable on mobile
+    // than a JS-proxied input.click(). We only handle the resulting change.
+    const imageInput = document.getElementById('image-input');
+    imageInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) insertImageFile(file);
+      imageInput.value = '';
+    });
+
+    function insertImageFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1280;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if (w > MAX || h > MAX) {
+            const r = Math.min(MAX / w, MAX / h);
+            w = Math.round(w * r);
+            h = Math.round(h * r);
+          }
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          // PNG keeps transparency; JPEG is much smaller for photos.
+          const isPng = file.type === 'image/png';
+          const src = c.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.85);
+          // Place centered in the current viewport, sized to look ~natural at this zoom.
+          const center = screenToWorld(canvas.width / 2, canvas.height / 2);
+          const worldW = w / scale, worldH = h / scale;
+          const item = { type: 'image', src, x: center.x - worldW / 2, y: center.y - worldH / 2, w: worldW, h: worldH, dx: 0, dy: 0 };
+          saveStroke(item).then((saved) => {
+            if (saved) {
+              const layer = { id: saved.id, stroke_data: item, z_index: saved.z_index };
+              strokes.push(layer);
+              recordAction({ type: 'add', id: saved.id, data: item });
+              sortStrokes();
+              // Drop into select mode with the new image selected so its
+              // resize handles are immediately visible and usable.
+              setActiveTool('select');
+              selectLayer(layer);
+            }
+          });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
 
     document.getElementById('btn-emoji').addEventListener('click', () => {
       if (tool === 'emoji') {
@@ -2226,63 +2470,6 @@
       document.getElementById('image-input').click();
     });
 
-    document.getElementById('image-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onerror = () => URL.revokeObjectURL(objectUrl);
-      img.onload = async () => {
-        URL.revokeObjectURL(objectUrl);
-
-        const MAX_PX = 600;
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        if (w > MAX_PX || h > MAX_PX) {
-          if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
-          else { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
-        }
-
-        const offscreen = document.createElement('canvas');
-        offscreen.width = w;
-        offscreen.height = h;
-        offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
-
-        const dataUrl = offscreen.toDataURL(
-          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          0.85
-        );
-
-        const MAX_WORLD = 400;
-        let worldW = w;
-        let worldH = h;
-        if (worldW > MAX_WORLD || worldH > MAX_WORLD) {
-          if (worldW >= worldH) { worldH = Math.round(worldH * MAX_WORLD / worldW); worldW = MAX_WORLD; }
-          else { worldW = Math.round(worldW * MAX_WORLD / worldH); worldH = MAX_WORLD; }
-        }
-
-        const viewCentreX = (canvas.width / 2 - offsetX) / scale;
-        const viewCentreY = (canvas.height / 2 - offsetY) / scale;
-        const strokeData = {
-          type: 'image',
-          x: viewCentreX - worldW / 2,
-          y: viewCentreY - worldH / 2,
-          width: worldW,
-          height: worldH,
-          dataUrl
-        };
-
-        const saved = await saveStroke(strokeData);
-        if (saved) {
-          strokes.push({ id: saved.id, stroke_data: strokeData });
-          redoActions = [];
-          redrawAll();
-        }
-      };
-      img.src = objectUrl;
-    });
 
     buildEmojiPicker();
 
