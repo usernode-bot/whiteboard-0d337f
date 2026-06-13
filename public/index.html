@@ -205,10 +205,27 @@
       max-width: 280px;
     }
     @media (max-width: 640px) {
+      /* On mobile, let the toolbar span the viewport width and wrap its
+         buttons onto multiple rows instead of scrolling horizontally. */
+      .toolbar {
+        padding: 6px 8px !important;
+        gap: 4px !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        overflow-x: visible !important;
+        left: 6px !important;
+        right: 6px !important;
+        transform: none !important;
+        max-width: none !important;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
       .toolbar-menu-content { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
+      /* Vertical separators look out of place once buttons wrap — hide them. */
+      .toolbar > .w-px.h-8 { display: none !important; }
     }
   </style>
 </head>
