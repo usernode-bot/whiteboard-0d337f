@@ -1,4 +1,18 @@
 {
-  "secrets": [],
-  "name": "batun11"
+  "name": "batun11",
+  "secrets": [
+    {
+      "key": "PREMIUM_BRUSH_PAYEE_PUBKEY",
+      "description": "Usernode wallet address (ut1...) that receives the one-time payment to unlock premium brushes (heart, prism).",
+      "required": true,
+      "private": true,
+      "staging_default": "ut1stagingbrushtreasury000000000000000000"
+    },
+    {
+      "key": "PREMIUM_BRUSH_PRICE",
+      "description": "One-time price to unlock all premium brushes, as an integer in the chain's smallest unit.",
+      "required": false,
+      "default": "500"
+    }
+  ]
 }

@@ -77,32 +77,140 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Usernode bridge — centrally hosted, never vendored. Powers on-chain
+       sendTransaction for the premium-brush unlock. -->
+  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
-    canvas { display: block; cursor: crosshair; }
-    .toolbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-    .tool-btn { transition: all 0.15s; }
-
+    /* ============================================================
+       Design tokens — single source of truth.
+       Accent: violet #7c3aed (brand). Neutrals: Tailwind zinc ramp.
+       Surfaces, borders, text and shadows are themed for light/dark
+       via the .dark class toggle so everything responds at runtime.
+       ============================================================ */
     :root {
-      --btn-color: #3f3f46;
-      --btn-hover-bg: rgba(124, 58, 237, 0.15);
-      --range-bg: #3f3f46;
+      --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+      --accent: #7c3aed;
+      --accent-hover: #6d28d9;
+      --accent-soft: rgba(124, 58, 237, 0.15);
+      --on-accent: #ffffff;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+
+      --surface-panel: rgba(255, 255, 255, 0.92);
+      --surface-popover: #ffffff;
+      --surface-modal: #ffffff;
+      --surface-hover: rgba(24, 24, 27, 0.06);
+
+      --border-hairline: rgba(24, 24, 27, 0.10);
+      --divider: rgba(24, 24, 27, 0.08);
+
+      --text-primary: #18181b;
+      --text-secondary: #52525b;
+      --text-muted: #71717a;
+
+      /* control internals (names kept for back-compat with existing CSS) */
+      --btn-color: #52525b;
+      --btn-hover-bg: rgba(124, 58, 237, 0.10);
+      --range-bg: #d4d4d8;
       --swatch-border: #d4d4d8;
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-panel: 0 8px 24px -8px rgba(24, 24, 27, 0.18), 0 2px 6px -2px rgba(24, 24, 27, 0.10);
+      --shadow-popover: 0 12px 28px -10px rgba(24, 24, 27, 0.30), 0 2px 6px -2px rgba(24, 24, 27, 0.12);
+      --shadow-modal: 0 24px 50px -12px rgba(24, 24, 27, 0.45);
+
+      --focus-ring: 0 0 0 2px var(--surface-popover), 0 0 0 4px var(--accent);
+
+      --grid-dot: rgba(24, 24, 27, 0.07);
     }
     .dark {
+      --accent: #8b5cf6;
+      --accent-hover: #7c3aed;
+      --accent-soft: rgba(167, 139, 250, 0.20);
+      --on-accent: #ffffff;
+
+      --surface-panel: rgba(39, 39, 42, 0.92);
+      --surface-popover: #27272a;
+      --surface-modal: #27272a;
+      --surface-hover: rgba(255, 255, 255, 0.07);
+
+      --border-hairline: rgba(255, 255, 255, 0.10);
+      --divider: rgba(255, 255, 255, 0.10);
+
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+
       --btn-color: #a1a1aa;
-      --btn-hover-bg: rgba(167, 139, 250, 0.20);
-      --range-bg: #71717a;
+      --btn-hover-bg: rgba(167, 139, 250, 0.16);
+      --range-bg: #52525b;
       --swatch-border: #52525b;
+
+      --shadow-panel: 0 8px 24px -8px rgba(0, 0, 0, 0.55), 0 2px 6px -2px rgba(0, 0, 0, 0.45);
+      --shadow-popover: 0 12px 28px -10px rgba(0, 0, 0, 0.6), 0 2px 6px -2px rgba(0, 0, 0, 0.5);
+      --shadow-modal: 0 24px 50px -12px rgba(0, 0, 0, 0.7);
+
+      --grid-dot: rgba(255, 255, 255, 0.06);
     }
 
-    .tool-btn { color: var(--btn-color); }
-    .tool-btn.active { background: #7c3aed; color: white; }
-    .tool-btn:not(.active):hover { background: var(--btn-hover-bg); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
+    body { font-family: var(--font-ui); color: var(--text-primary); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; }
+
+    /* Static dot-grid texture on the page background layer (behind the
+       transparent canvas) so it never touches stroke compositing or PDF
+       export. Does not track zoom by design. */
+    #grid-overlay {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: radial-gradient(var(--grid-dot) 1.2px, transparent 1.2px);
+      background-size: 24px 24px;
+      background-position: -1px -1px;
+    }
+
+    /* Shared surfaces */
+    .toolbar {
+      background: var(--surface-panel);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-panel);
+      backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    }
+    .panel-surface {
+      background: var(--surface-popover);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-popover);
+    }
+    .modal-surface {
+      background: var(--surface-modal);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-modal);
+    }
+    .toolbar-divider { width: 1px; height: 24px; background: var(--divider); margin: 0 2px; border-radius: 1px; flex-shrink: 0; }
+    .panel-label { color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+    .tool-btn {
+      color: var(--btn-color);
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+    .tool-btn.active { background: var(--accent); color: var(--on-accent); }
+    .tool-btn:not(.active):hover { background: var(--btn-hover-bg); color: var(--text-primary); }
+    .tool-btn:active { transform: scale(0.94); }
+    .tool-btn svg { width: 19px; height: 19px; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    /* selected swatch indicator */
+    .swatch-selected { box-shadow: 0 0 0 2px var(--surface-popover), 0 0 0 3px var(--accent) !important; }
+
     input[type="range"] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--range-bg); outline: none; }
-    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; }
-    input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; cursor: pointer; border: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+    input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
     input[type="color"] { -webkit-appearance: none; border: none; padding: 0; cursor: pointer; }
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
     input[type="color"]::-webkit-color-swatch { border: 2px solid var(--swatch-border); border-radius: 6px; }
@@ -124,201 +232,512 @@
       z-index: 60;
       display: none;
       caret-color: currentColor;
-      font-family: sans-serif;
+      font-family: var(--font-ui);
       white-space: pre;
     }
     #text-measure {
       position: fixed;
       visibility: hidden;
       white-space: pre;
-      font-family: sans-serif;
+      font-family: var(--font-ui);
       pointer-events: none;
       top: -9999px;
     }
+
+    /* Empty state — non-interactive hint shown on a blank board */
+    #empty-state {
+      position: fixed; inset: 0; z-index: 30;
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none; padding: 1rem;
+    }
+    #empty-state .empty-card { text-align: center; max-width: 22rem; }
+    #empty-state .empty-icon {
+      width: 56px; height: 56px; margin: 0 auto 1rem;
+      border-radius: var(--radius-lg);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--accent-soft); color: var(--accent);
+    }
+    #empty-state .empty-title { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); margin: 0 0 0.35rem; }
+    #empty-state .empty-sub { font-size: 0.875rem; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+    /* Loading indicator */
+    #loading-indicator {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%); z-index: 45;
+      display: none; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.9rem; border-radius: 999px;
+      font-size: 0.8rem; color: var(--text-secondary);
+      background: var(--surface-popover);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-popover);
+    }
+    #loading-indicator.visible { display: flex; }
+
+    /* Modal buttons */
+    .modal-btn, .modal-btn-muted, .modal-btn-danger {
+      padding: 0.5rem 0.9rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .modal-btn {
+      border: 1px solid var(--border-hairline);
+      color: var(--text-primary);
+      background: transparent;
+    }
+    .modal-btn:hover { background: var(--surface-hover); }
+    .modal-btn-muted {
+      border: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
+      background: transparent;
+    }
+    .modal-btn-muted:hover { background: var(--surface-hover); color: var(--text-primary); }
+    .modal-btn-danger {
+      border: 1px solid transparent;
+      color: #ffffff;
+      background: var(--danger);
+    }
+    .modal-btn-danger:hover { background: var(--danger-hover); }
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid var(--range-bg);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toolbar-toggle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: white;
+      border: 1px solid #e4e4e7;
+      color: #3f3f46;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      z-index: 51;
+    }
+    .toolbar-toggle.dragging {
+      transition: none;
+    }
+    .toolbar-toggle:hover {
+      background: #f5f5f4;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .toolbar-toggle:active {
+      cursor: grabbing;
+    }
+    .dark .toolbar-toggle {
+      background: #27272a;
+      border-color: #52525b;
+      color: #a1a1aa;
+    }
+    .dark .toolbar-toggle:hover {
+      background: #3f3f46;
+    }
+    .toolbar-menu {
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border: 1px solid #e4e4e7;
+      border-radius: 16px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 50;
+      max-height: 80vh;
+      overflow-y: auto;
+      transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1), visibility 200ms;
+      pointer-events: auto;
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+    }
+    .toolbar-menu.hidden {
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.95) translateY(-8px);
+      pointer-events: none;
+    }
+    .dark .toolbar-menu {
+      background: rgba(39, 39, 42, 0.95);
+      border-color: #52525b;
+    }
+    .toolbar-menu-content {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      max-width: 280px;
+    }
     @media (max-width: 640px) {
-      .toolbar { padding: 6px 8px !important; gap: 4px !important; }
+      /* On mobile, let the toolbar span the viewport width and wrap its
+         buttons onto multiple rows instead of scrolling horizontally. */
+      .toolbar {
+        padding: 6px 8px !important;
+        gap: 4px !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        overflow-x: visible !important;
+        left: 6px !important;
+        right: 6px !important;
+        transform: none !important;
+        max-width: none !important;
+        max-height: 80vh;
+        overflow-y: auto;
+      }
+      .toolbar-menu-content { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
+      /* Vertical separators look out of place once buttons wrap — hide them. */
+      .toolbar > .w-px.h-8 { display: none !important; }
     }
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
+  <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
+
+  <div id="empty-state" aria-hidden="true">
+    <div class="empty-card">
+      <div class="empty-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      </div>
+      <p class="empty-title">Your board is empty</p>
+      <p class="empty-sub">Pick a tool above and start drawing — this whiteboard is shared live with everyone.</p>
+    </div>
+  </div>
+
+  <div id="loading-indicator">
+    <span class="spinner"></span>
+    <span>Loading board…</span>
+  </div>
   <input type="text" id="text-input" autocomplete="off" spellcheck="false" tabindex="-1" style="display:none">
   <span id="text-measure"></span>
-  <input type="file" id="image-file-input" accept="image/*" style="display:none">
 
-  <div class="toolbar fixed top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-2xl px-4 py-2 flex items-center gap-2 z-50 shadow-lg max-w-[96vw] overflow-x-auto">
-    <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-    </button>
-    <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
-    </button>
-    <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
-    </button>
-    <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-    </button>
-    <button id="btn-select" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Select / Move layer">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
-    </button>
-    <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
-    </button>
-    <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-    </button>
-    <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-    </button>
-    <input type="file" id="image-input" accept="image/*" class="hidden">
+  <!-- Comment pins overlay: pins track world coords but keep a fixed screen size. -->
+  <div id="pin-layer" class="fixed inset-0 z-40" style="pointer-events:none"></div>
 
-    <div class="relative">
-      <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
-        <!-- icon swapped in JS to reflect the selected shape -->
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-      </button>
-      <div id="shapes-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex gap-1">
-        <button data-shape="line" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Line">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+  <!-- Composer for a brand-new thread -->
+  <div id="comment-composer" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-xl z-[70] w-64">
+    <p id="composer-attach-note" class="text-xs text-zinc-400 dark:text-zinc-500 mb-2 hidden">📌 Attached to an element</p>
+    <textarea id="composer-text" rows="3" placeholder="Add a comment…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+    <div class="flex justify-end gap-2 mt-2">
+      <button id="composer-cancel" class="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+      <button id="composer-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Comment</button>
+    </div>
+  </div>
+
+  <!-- Open-thread panel: replies + reply box -->
+  <div id="thread-panel" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl shadow-xl z-[70] w-72 flex flex-col" style="max-height:60vh">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
+      <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Comments</span>
+      <div class="flex items-center gap-1">
+        <button id="thread-delete" class="hidden text-zinc-400 hover:text-red-500 p-1 rounded" title="Delete thread">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
         </button>
-        <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
-        </button>
-        <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Circle / Ellipse">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+        <button id="thread-close" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 rounded" title="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
     </div>
+    <div id="thread-replies" class="px-3 py-2 overflow-y-auto flex-1 space-y-3"></div>
+    <div class="px-3 py-2 border-t border-zinc-200 dark:border-zinc-700">
+      <textarea id="reply-text" rows="2" placeholder="Reply…" class="w-full text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 p-2 outline-none resize-none focus:border-violet-500"></textarea>
+      <div class="flex justify-end mt-2">
+        <button id="reply-submit" class="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs hover:bg-violet-700">Reply</button>
+      </div>
+    </div>
+  </div>
 
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+  <!-- Floating toolbar toggle button -->
+  <button id="toolbar-toggle" class="toolbar-toggle fixed" title="Toggle drawing tools" aria-label="Toggle drawing tools" aria-expanded="false">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+  </button>
 
-    <div id="layer-actions" class="hidden items-center gap-1">
-      <button id="btn-front" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Bring to front">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>
+  <!-- Floating toolbar menu (expands on hover) -->
+  <div id="toolbar-menu" class="toolbar-menu fixed hidden">
+    <div class="toolbar-menu-content">
+      <!-- Drawing tools -->
+      <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
       </button>
-      <button id="btn-back" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Send to back">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1"/><path d="M20 8v11a1 1 0 0 1-1 1H8"/></svg>
+      <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
       </button>
-      <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
+      <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      </button>
+      <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      </button>
+      <button id="btn-select" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Select / Move layer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
+      </button>
+      <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+      </button>
+      <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+      </button>
+      <button id="btn-image" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Insert image">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      </button>
+      <input type="file" id="image-input" accept="image/*" class="hidden">
+
+      <!-- Shapes tool with popover -->
+      <div class="relative">
+        <button id="btn-shapes" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Shapes (line, circle, square)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+        </button>
+        <div id="shapes-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex gap-1">
+          <button data-shape="line" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Line">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+          </button>
+          <button data-shape="rect" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Square / Rectangle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+          </button>
+          <button data-shape="circle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Oval">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>
+          </button>
+          <button data-shape="arrow" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>
+          </button>
+          <button data-shape="triangle" class="shape-opt tool-btn w-9 h-9 rounded-lg flex items-center justify-center" title="Triangle">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 L21 20 L3 20 Z"/></svg>
+          </button>
+          <button data-shape="heart" data-premium="1" class="shape-opt tool-btn relative w-9 h-9 rounded-lg flex items-center justify-center" title="Heart (premium)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>
+            <span class="lock-badge absolute -top-1 -right-1 text-[10px] leading-none">🔒</span>
+          </button>
+          <button data-shape="prism" data-premium="1" class="shape-opt tool-btn relative w-9 h-9 rounded-lg flex items-center justify-center" title="Prism (premium)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>
+            <span class="lock-badge absolute -top-1 -right-1 text-[10px] leading-none">🔒</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Layer actions (shown only when a layer is selected) -->
+      <div id="layer-actions" class="hidden items-center gap-1">
+        <button id="btn-front" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Bring to front">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>
+        </button>
+        <button id="btn-back" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Send to back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="12" height="12" rx="1"/><path d="M20 8v11a1 1 0 0 1-1 1H8"/></svg>
+        </button>
+        <button id="btn-delete-layer" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-red-500" title="Delete layer (Del)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>
+      </div>
+
+      <button id="btn-comment" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Comment (drop a pin)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Color and size controls -->
+      <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
+        <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
+      </button>
+
+      <div class="flex items-center gap-1">
+        <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
+        <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
+        <span id="size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">3</span>
+      </div>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Undo/Redo -->
+      <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+      <button id="btn-redo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Redo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Utility buttons -->
+      <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
       </button>
-    </div>
 
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-color" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center" title="Color">
-      <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
-    </button>
-
-    <div class="flex items-center gap-1">
-      <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
-      <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
-      <span id="size-label" class="text-xs text-zinc-400 dark:text-zinc-500 w-6 text-center">3</span>
-    </div>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-undo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Undo">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-    </button>
-    <button id="btn-redo" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Redo">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <div class="relative">
-      <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
+      <button id="btn-layers" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Layers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </button>
-      <div id="bg-popover" class="hidden absolute top-12 right-0 bg-white border border-zinc-300 rounded-xl p-3 shadow-lg z-[60] w-44">
-        <p class="text-xs text-zinc-500 mb-2">Background</p>
-        <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
-        <label class="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer">
-          <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
-          Custom
-        </label>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Background color -->
+      <div class="relative">
+        <button id="btn-bg" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Background color">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z"/><path d="m5 2 3 3"/><path d="M2 13h15"/><path d="M22 19a2 2 0 1 1-4 0c0-1.6 2-4 2-4s2 2.4 2 4Z"/></svg>
+        </button>
+        <div id="bg-popover" class="panel-surface hidden absolute top-12 right-0 rounded-xl p-3 z-[60] w-44">
+          <p class="panel-label mb-2">Background</p>
+          <div id="bg-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
+          <label class="flex items-center gap-2 text-xs cursor-pointer" style="color: var(--text-secondary);">
+            <input id="bg-custom" type="color" value="#ffffff" class="w-7 h-7 rounded-md bg-transparent">
+            Custom
+          </label>
+        </div>
       </div>
+
+      <button id="btn-home" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Reset View (Ctrl+0)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <!-- Export and theme -->
+      <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+
+      <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
+
+      <button id="btn-theme" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Toggle dark mode">
+        <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
     </div>
 
-    <button id="btn-home" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Reset View (Ctrl+0)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    </button>
-
-    <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
-
-    <button id="btn-theme" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Toggle dark mode">
-      <!-- Moon: shown in light mode, hidden in dark mode -->
-      <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <!-- Sun: shown in dark mode, hidden in light mode -->
-      <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    <button id="btn-zoom-out" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Zoom out">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
     </button>
   </div>
 
-  <div id="color-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-3 shadow-lg z-[60] w-44">
-    <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Color</p>
-    <div id="color-swatches" class="grid grid-cols-4 gap-2 mb-2"></div>
-    <label class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer">
+  <div id="color-popover" class="panel-surface hidden fixed rounded-xl p-3 z-[60] w-56 max-h-[70vh] overflow-y-auto">
+    <p class="panel-label mb-2">Color</p>
+    <div id="color-swatches" class="grid grid-cols-6 gap-1.5 mb-2"></div>
+    <label class="flex items-center gap-2 text-xs cursor-pointer" style="color: var(--text-secondary);">
+
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
     </label>
   </div>
 
-  <div id="emoji-picker" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white/95 border border-zinc-300 rounded-2xl p-3 z-50 shadow-lg hidden max-w-[96vw]">
+  <div id="emoji-picker" class="panel-surface fixed top-20 left-1/2 -translate-x-1/2 rounded-2xl p-3 z-50 hidden max-w-[96vw]">
     <div class="grid grid-cols-8 gap-1"></div>
   </div>
 
-  <div id="zoom-indicator" class="fixed bottom-4 left-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 shadow cursor-pointer select-none" title="Click to reset zoom">
+  <div id="text-popover" class="panel-surface hidden fixed rounded-xl p-3 z-[60] w-56">
+    <p class="panel-label mb-2">Text</p>
+    <label class="block panel-label mb-1">Font</label>
+    <select id="text-font-family" class="w-full mb-3 px-2 py-1.5 text-sm rounded-lg border bg-transparent" style="border-color: var(--border-hairline); color: var(--text-primary);">
+      <option value="sans-serif" style="font-family:sans-serif">Sans-serif</option>
+      <option value="serif" style="font-family:serif">Serif</option>
+      <option value="monospace" style="font-family:monospace">Monospace</option>
+      <option value="cursive" style="font-family:cursive">Handwriting</option>
+      <option value="Arial, sans-serif" style="font-family:Arial,sans-serif">Arial</option>
+      <option value="Georgia, serif" style="font-family:Georgia,serif">Georgia</option>
+      <option value="'Courier New', monospace" style="font-family:'Courier New',monospace">Courier</option>
+      <option value="'Comic Sans MS', cursive" style="font-family:'Comic Sans MS',cursive">Comic</option>
+      <option value="Impact, sans-serif" style="font-family:Impact,sans-serif">Impact</option>
+      <option value="'Trebuchet MS', sans-serif" style="font-family:'Trebuchet MS',sans-serif">Trebuchet</option>
+      <option value="'Brush Script MT', cursive" style="font-family:'Brush Script MT',cursive">Brush Script</option>
+    </select>
+    <label class="block panel-label mb-1">Size</label>
+    <div class="flex items-center gap-2">
+      <input id="text-size-slider" type="range" min="8" max="200" step="1" value="24" class="flex-1">
+      <div class="flex items-center gap-0.5">
+        <input id="text-size-input" type="number" min="8" max="200" value="24" class="w-14 px-1.5 py-1 text-sm text-right rounded-lg border bg-transparent" style="border-color: var(--border-hairline); color: var(--text-primary);">
+        <span class="text-xs" style="color: var(--text-muted);">px</span>
+      </div>
+    </div>
+    <label class="block text-xs text-zinc-500 dark:text-zinc-400 mt-3 mb-1">Style</label>
+    <div class="flex flex-col gap-1.5">
+      <label class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200 cursor-pointer">
+        <input id="text-shadow-toggle" type="checkbox" class="w-4 h-4 rounded">
+        Shadow
+      </label>
+      <label class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200 cursor-pointer">
+        <input id="text-highlight-toggle" type="checkbox" class="w-4 h-4 rounded">
+        Highlight
+      </label>
+    </div>
+  </div>
+
+  <div id="zoom-indicator" class="toolbar fixed bottom-4 left-4 rounded-lg px-3 py-1.5 text-xs font-medium z-50 cursor-pointer select-none" style="color: var(--text-secondary);" title="Click to reset zoom">
     100%
   </div>
 
-  <div id="status-indicator" class="fixed bottom-4 right-4 bg-white/90 dark:bg-zinc-800/90 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400 z-50 opacity-0 pointer-events-none shadow transition-opacity duration-300">
+  <div id="status-indicator" class="toolbar fixed bottom-4 right-4 rounded-lg px-3 py-1.5 text-xs font-medium z-50 opacity-0 pointer-events-none transition-opacity duration-300" style="color: var(--text-secondary);">
     Saved
   </div>
 
-  <div id="export-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
-    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
-      <p class="text-zinc-800 dark:text-zinc-100 text-sm font-medium mb-4">Export PDF — choose background</p>
+  <div id="export-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(9,9,11,0.55); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);">
+    <div class="modal-surface rounded-2xl p-6 max-w-sm mx-4 text-center">
+      <p class="text-sm font-semibold mb-4" style="color: var(--text-primary);">Export PDF — choose background</p>
       <div class="flex gap-2 justify-center mb-4 flex-wrap">
-        <button id="export-light" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-300 bg-white inline-block flex-shrink-0"></span>Light
+        <button id="export-light" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border bg-white inline-block flex-shrink-0" style="border-color: var(--border-hairline);"></span>Light
         </button>
-        <button id="export-dark-bg" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-600 inline-block flex-shrink-0" style="background:#18181b"></span>Dark
+        <button id="export-dark-bg" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border inline-block flex-shrink-0" style="background:#18181b; border-color: var(--border-hairline);"></span>Dark
         </button>
-        <button id="export-transparent" class="px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-200 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2">
-          <span class="w-4 h-4 rounded border border-zinc-300 dark:border-zinc-600 inline-block flex-shrink-0" style="background:repeating-conic-gradient(#d4d4d8 0% 25%,#ffffff 0% 50%) 0/8px 8px"></span>Transparent
+        <button id="export-transparent" class="modal-btn flex items-center gap-2">
+          <span class="w-4 h-4 rounded border inline-block flex-shrink-0" style="background:repeating-conic-gradient(#d4d4d8 0% 25%,#ffffff 0% 50%) 0/8px 8px; border-color: var(--border-hairline);"></span>Transparent
         </button>
       </div>
-      <button id="export-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+      <button id="export-cancel" class="modal-btn-muted">Cancel</button>
     </div>
   </div>
 
-  <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+  <div id="brush-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
     <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 max-w-sm mx-4 text-center">
-      <p id="confirm-msg" class="text-zinc-800 dark:text-zinc-100 text-sm mb-4"></p>
+      <p class="text-zinc-800 dark:text-zinc-100 text-base font-semibold mb-1">Unlock premium brushes</p>
+      <p class="text-zinc-500 dark:text-zinc-400 text-sm mb-4">A one-time payment unlocks the Heart and Prism brushes forever.</p>
+      <div class="flex gap-6 justify-center mb-4 text-zinc-700 dark:text-zinc-200">
+        <div class="flex flex-col items-center gap-1">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>
+          <span class="text-xs">Heart</span>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>
+          <span class="text-xs">Prism</span>
+        </div>
+      </div>
+      <p id="brush-price" class="text-zinc-800 dark:text-zinc-100 text-sm font-medium mb-4">One-time price: …</p>
+      <p id="brush-modal-status" class="text-xs text-zinc-500 dark:text-zinc-400 mb-3 min-h-[1rem]"></p>
       <div class="flex gap-3 justify-center">
-        <button id="confirm-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
-        <button id="confirm-ok" class="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600">Clear</button>
+        <button id="brush-cancel" class="px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+        <button id="brush-unlock" class="px-4 py-2 rounded-lg bg-violet-600 text-white text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed">Unlock</button>
       </div>
     </div>
+  </div>
+
+  <div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(9,9,11,0.55); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);">
+    <div class="modal-surface rounded-2xl p-6 max-w-sm mx-4 text-center">
+      <p id="confirm-msg" class="text-sm mb-5" style="color: var(--text-primary);"></p>
+      <div class="flex gap-3 justify-center">
+        <button id="confirm-cancel" class="modal-btn-muted">Cancel</button>
+        <button id="confirm-ok" class="modal-btn-danger">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="layers-panel" class="hidden fixed top-20 right-3 bottom-4 w-64 max-w-[88vw] bg-white/95 dark:bg-zinc-800/95 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-lg z-50 flex flex-col">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
+      <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200">Layers</span>
+      <button id="btn-layers-close" class="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700" title="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="layers-list" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1"></div>
   </div>
 
   <script>
@@ -352,6 +771,29 @@
     let dragOrigDx = 0;
     let dragOrigDy = 0;
     let layerMoved = false;
+    // Image resize-handle state (select tool).
+    let isResizingLayer = false;
+    let resizeDef = null;           // active handle descriptor (see HANDLE_DEFS)
+    let resizeAnchor = { x: 0, y: 0 };
+    let resizeOrig = { w: 0, h: 0, x: 0, y: 0 };
+    let resizeBefore = null;
+    let resizeChanged = false;
+    const RESIZE_HANDLE_R = 6;      // dot radius (screen px)
+    const RESIZE_HIT_R = 20;        // grab tolerance (screen px, finger-friendly)
+    const MIN_IMAGE_PX = 16;        // smallest world size while resizing
+    // 8 handles: 4 corners (aspect-locked) + 4 side midpoints (single axis).
+    // ax/ay: which dimension this handle resizes. anchorRight/anchorBottom:
+    // which edge stays pinned. corner: lock aspect ratio. cursor: hover cue.
+    const HANDLE_DEFS = [
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: true,  corner: true,  cursor: 'nwse-resize' }, // 0 TL
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: true,  corner: true,  cursor: 'nesw-resize' }, // 1 TR
+      { ax: 1, ay: 1, anchorRight: false, anchorBottom: false, corner: true,  cursor: 'nwse-resize' }, // 2 BR
+      { ax: 1, ay: 1, anchorRight: true,  anchorBottom: false, corner: true,  cursor: 'nesw-resize' }, // 3 BL
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: true,  corner: false, cursor: 'ns-resize' },   // 4 top mid
+      { ax: 1, ay: 0, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ew-resize' },   // 5 right mid
+      { ax: 0, ay: 1, anchorRight: false, anchorBottom: false, corner: false, cursor: 'ns-resize' },   // 6 bottom mid
+      { ax: 1, ay: 0, anchorRight: true,  anchorBottom: false, corner: false, cursor: 'ew-resize' }    // 7 left mid
+    ];
     let isErasing = false;
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
@@ -367,12 +809,30 @@
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
 
+    // Highlight the active swatch in a popover grid (color or background).
+    function syncSelectedSwatch(containerId, value) {
+      const wrap = document.getElementById(containerId);
+      if (!wrap) return;
+      const norm = (value || '').toLowerCase();
+      wrap.querySelectorAll('button[data-swatch]').forEach((b) => {
+        b.classList.toggle('swatch-selected', b.dataset.swatch.toLowerCase() === norm);
+      });
+    }
+
+    // Toolbar dragging state
+    let toolbarPos = { x: 0, y: 0 };
+    let isToolbarDragging = false;
+    let toolbarDragStart = null;
+    let toolbarDragOffset = { x: 0, y: 0 };
+    let toolbarCollapseTimeout = null;
+
     function setStrokeColor(hex) {
       strokeColor = hex;
       document.getElementById('color-dot').style.backgroundColor = hex;
       if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
         document.getElementById('color-custom-stroke').value = hex;
       }
+      syncSelectedSwatch('color-swatches', hex);
     }
 
     // Sync color dot with initial theme
@@ -392,6 +852,8 @@
     let offsetY = 0;
     const MIN_SCALE = 0.05;
     const MAX_SCALE = 20;
+    // Multiplicative step for the toolbar zoom-out button (~17% per click).
+    const ZOOM_STEP = 1.2;
     let hasInitialResize = false;
 
 
@@ -428,11 +890,149 @@
     // Text tool state
     let pendingTextX = 0;
     let pendingTextY = 0;
+    // Font styling for newly placed text. Decoupled from the brush Size slider:
+    // text size is governed solely by the text tool pop-up's size control.
+    let textFontFamily = 'sans-serif';
+    let textFontSize = 24;
+    // Readability styling for newly placed text (both off by default).
+    let textShadow = false;
+    let textHighlight = false;
+
+    // Shared appearance constants for text styling. Shadow blur/offset are
+    // scaled to the text's own fontSize so they stay proportional at any zoom.
+    const TEXT_SHADOW_COLOR = 'rgba(0,0,0,0.45)';
+    const TEXT_SHADOW_BLUR_RATIO = 0.18;
+    const TEXT_SHADOW_OFFSET_RATIO = 0.06;
+    const TEXT_HIGHLIGHT_FILL = 'rgba(253, 224, 71, 0.6)'; // soft amber
+    const TEXT_HIGHLIGHT_PAD_RATIO = 0.15; // horizontal padding, * fontSize
+    // CSS-side equivalents for the live DOM input preview while typing.
+    const TEXT_SHADOW_CSS = '0 1px 3px rgba(0,0,0,0.45)';
+    const TEXT_HIGHLIGHT_CSS = 'rgba(253, 224, 71, 0.6)';
 
     // Rainbow brush: hue advances this many degrees per recorded point.
     const RAINBOW_HUE_STEP = 8;
     function rainbowColor(index) {
       return 'hsl(' + (((index * RAINBOW_HUE_STEP) % 360 + 360) % 360) + ', 90%, 55%)';
+    }
+
+    // --- Handwriting optimisation tuning constants ---
+    // Variable width maps drawing speed (and pressure where available) to a
+    // multiplier of the base stroke width. Faster motion / lighter pressure =>
+    // thinner; slower / heavier => thicker. World-space so it's zoom-invariant.
+    const WIDTH_MIN_MULT = 0.5;   // thinnest (fast / light)
+    const WIDTH_MAX_MULT = 1.6;   // thickest (slow / heavy)
+    const SPEED_MAX = 2.0;        // world px per ms at which width hits the minimum
+    const WIDTH_EMA_ALPHA = 0.5;  // exponential smoothing of per-point widths
+    const MIN_POINT_DIST = 1.5;   // world px; points closer than this are thinned out
+
+    // Pen pressure captured from PointerEvents (stylus only). 0 means "no real
+    // signal" (mouse, or a pen that doesn't report pressure) and falls back to
+    // the speed-based model. Touch pressure is read from TouchEvent force.
+    let penPressure = 0;
+
+    function speedToWidth(speed, baseWidth) {
+      const t = Math.min(1, speed / SPEED_MAX);
+      const mult = WIDTH_MAX_MULT + (WIDTH_MIN_MULT - WIDTH_MAX_MULT) * t;
+      return baseWidth * mult;
+    }
+
+    function pressureToWidth(pressure, baseWidth) {
+      const p = Math.max(0, Math.min(1, pressure));
+      return baseWidth * (WIDTH_MIN_MULT + (WIDTH_MAX_MULT - WIDTH_MIN_MULT) * p);
+    }
+
+    // Read a real pressure signal for the current input event, or 0 if none.
+    // Touch: TouchEvent.force (>0 on Apple Pencil / 3D-touch). Mouse path:
+    // the last pen-pointer pressure stashed by the pointer listeners.
+    function getPressure(e) {
+      if (e.touches && e.touches.length > 0) {
+        const f = e.touches[0].force;
+        return (typeof f === 'number' && f > 0) ? f : 0;
+      }
+      return penPressure;
+    }
+
+    // Forward pass: bake a per-point width `w` from stored speed (point.t) and
+    // pressure (point.pr), EMA-smoothed. Deterministic, so the live preview and
+    // every client that re-renders the saved stroke agree.
+    function computePointWidths(points, baseWidth) {
+      let ema = baseWidth;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        let target;
+        if (typeof p.pr === 'number' && p.pr > 0) {
+          target = pressureToWidth(p.pr, baseWidth);
+        } else if (i > 0 && typeof p.t === 'number' && typeof points[i - 1].t === 'number') {
+          const dt = Math.max(1, p.t - points[i - 1].t);
+          const dx = p.x - points[i - 1].x;
+          const dy = p.y - points[i - 1].y;
+          const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+          target = speedToWidth(speed, baseWidth);
+        } else {
+          target = baseWidth;
+        }
+        ema = i === 0 ? target : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * ema);
+        p.w = ema;
+      }
+    }
+
+    // Quadratic-midpoint smoothing: builds a single smooth path through the
+    // points (caller does beginPath/strokeStyle/lineWidth/stroke). Used for
+    // uniform-width strokes (existing saved strokes, eraser).
+    function buildSmoothPath(ctx, points) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.moveTo(points[0].x, points[0].y);
+      if (n === 2) {
+        ctx.lineTo(points[1].x, points[1].y);
+        return;
+      }
+      for (let i = 1; i < n - 1; i++) {
+        const mx = (points[i].x + points[i + 1].x) / 2;
+        const my = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my);
+      }
+      // Final segment runs through the last raw point.
+      ctx.quadraticCurveTo(points[n - 2].x, points[n - 2].y, points[n - 1].x, points[n - 1].y);
+    }
+
+    // Smoothed render, segment-by-segment, so each piece can carry its own
+    // width (point.w) and/or colour (getColor). Used for variable-width pen and
+    // for the rainbow brush. Falls back to baseWidth where a point lacks `w`.
+    function strokeSmoothSegments(ctx, points, getColor, baseWidth) {
+      const n = points.length;
+      if (n < 2) return;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (n === 2) {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.lineTo(points[1].x, points[1].y);
+        ctx.lineWidth = typeof points[1].w === 'number' ? points[1].w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(1);
+        ctx.stroke();
+        return;
+      }
+      let prevMidX = points[0].x, prevMidY = points[0].y;
+      for (let i = 1; i < n; i++) {
+        const p = points[i];
+        let midX, midY;
+        if (i < n - 1) {
+          midX = (p.x + points[i + 1].x) / 2;
+          midY = (p.y + points[i + 1].y) / 2;
+        } else {
+          midX = p.x;
+          midY = p.y;
+        }
+        ctx.beginPath();
+        ctx.moveTo(prevMidX, prevMidY);
+        ctx.quadraticCurveTo(p.x, p.y, midX, midY);
+        ctx.lineWidth = typeof p.w === 'number' ? p.w : baseWidth;
+        if (getColor) ctx.strokeStyle = getColor(i);
+        ctx.stroke();
+        prevMidX = midX;
+        prevMidY = midY;
+      }
     }
 
     function hexToRgba(hex, alpha) {
@@ -443,7 +1043,7 @@
     }
 
     function updateBrushCursor() {
-      if (tool === 'text' || tool === 'shape') {
+      if (tool === 'text' || tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
         return;
       }
@@ -484,9 +1084,9 @@
         canvas.style.cursor = 'default';
         return;
       }
-      if (tool === 'shape') {
+      if (tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = tool === 'comment' ? 'cell' : 'crosshair';
         return;
       }
       brushCursor.style.display = show ? 'block' : 'none';
@@ -523,10 +1123,15 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
       for (const s of strokes) {
-        drawItem(s.stroke_data || s);
+        const item = s.stroke_data || s;
+        if (item.hidden) continue; // hidden layers are skipped (toggled in panel)
+        drawItem(item);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (!noSelection) drawSelectionOverlay();
+      if (typeof updateEmptyState === 'function') updateEmptyState();
+      renderLayerPanel();
+      updatePins();
     }
 
     function drawItem(item) {
@@ -558,10 +1163,16 @@
     }
 
     function drawImageItem(item) {
-      const img = getImage(item.src);
+      // Tolerate the legacy {dataUrl,width,height} shape as well as the
+      // canonical {src,w,h} layer shape.
+      const src = item.src || item.dataUrl;
+      const w = item.w != null ? item.w : item.width;
+      const h = item.h != null ? item.h : item.height;
+      if (!src) return;
+      const img = getImage(src);
       if (img.complete && img.naturalWidth) {
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(img, item.x, item.y, item.w, item.h);
+        ctx.drawImage(img, item.x, item.y, w, h);
       }
     }
 
@@ -585,6 +1196,65 @@
         const rx = Math.abs(s.x1 - s.x0) / 2;
         const ry = Math.abs(s.y1 - s.y0) / 2;
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else if (s.shape === 'triangle') {
+        // Isosceles triangle inscribed in the drag box: apex top-center.
+        const left = Math.min(s.x0, s.x1);
+        const right = Math.max(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const bottom = Math.max(s.y0, s.y1);
+        ctx.moveTo((left + right) / 2, top);
+        ctx.lineTo(right, bottom);
+        ctx.lineTo(left, bottom);
+        ctx.closePath();
+      } else if (s.shape === 'heart') {
+        // Heart fit to the drag box: two top lobes (bezier) meeting at a bottom
+        // tip. Parameterised by box width/height so it scales with the drag.
+        const left = Math.min(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const w = Math.abs(s.x1 - s.x0);
+        const h = Math.abs(s.y1 - s.y0);
+        const cx = left + w / 2;
+        const tipY = top + h;
+        const topY = top + h * 0.28;
+        ctx.moveTo(cx, tipY);
+        ctx.bezierCurveTo(left + w * 0.06, top + h * 0.66, left, top + h * 0.10, cx, topY);
+        ctx.bezierCurveTo(left + w, top + h * 0.10, left + w * 0.94, top + h * 0.66, cx, tipY);
+        ctx.closePath();
+      } else if (s.shape === 'prism') {
+        // Triangular prism glyph: a front triangle plus a back triangle offset
+        // up-right, with three edges connecting matching vertices.
+        const left = Math.min(s.x0, s.x1);
+        const right = Math.max(s.x0, s.x1);
+        const top = Math.min(s.y0, s.y1);
+        const bottom = Math.max(s.y0, s.y1);
+        const w = right - left;
+        const h = bottom - top;
+        const ox = w * 0.28, oy = -h * 0.22; // depth offset toward back face
+        // Front triangle (apex top-center of the front face).
+        const fAx = left + w * 0.36, fAy = top + h * 0.18;
+        const fBx = left, fBy = bottom;
+        const fCx = left + w * 0.72, fCy = bottom;
+        // Back triangle = front shifted by the depth offset.
+        const bAx = fAx + ox, bAy = fAy + oy;
+        const bBx = fBx + ox, bBy = fBy + oy;
+        const bCx = fCx + ox, bCy = fCy + oy;
+        ctx.moveTo(fAx, fAy); ctx.lineTo(fBx, fBy); ctx.lineTo(fCx, fCy); ctx.closePath();
+        ctx.moveTo(bAx, bAy); ctx.lineTo(bBx, bBy); ctx.lineTo(bCx, bCy); ctx.closePath();
+        ctx.moveTo(fAx, fAy); ctx.lineTo(bAx, bAy);
+        ctx.moveTo(fBx, fBy); ctx.lineTo(bBx, bBy);
+        ctx.moveTo(fCx, fCy); ctx.lineTo(bCx, bCy);
+      } else if (s.shape === 'arrow') {
+        // Main shaft from start to end, plus an arrowhead at the end point.
+        // Geometry is in world units so it scales with zoom like the shaft.
+        ctx.moveTo(s.x0, s.y0);
+        ctx.lineTo(s.x1, s.y1);
+        const ang = Math.atan2(s.y1 - s.y0, s.x1 - s.x0);
+        const headLen = Math.max(s.width * 3.5, 12);
+        const headAng = Math.PI / 7; // ~25.7° half-angle
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x1 - headLen * Math.cos(ang - headAng), s.y1 - headLen * Math.sin(ang - headAng));
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x1 - headLen * Math.cos(ang + headAng), s.y1 - headLen * Math.sin(ang + headAng));
       } else {
         // line (default)
         ctx.moveTo(s.x0, s.y0);
@@ -603,20 +1273,50 @@
 
     function drawStroke(s) {
       if (s.type === 'text') {
-        ctx.font = s.fontSize + 'px sans-serif';
-        ctx.fillStyle = s.color;
+        ctx.font = s.fontSize + 'px ' + (s.fontFamily || 'sans-serif');
         ctx.globalCompositeOperation = 'source-over';
+        // Highlight panel behind the text (drawn first, never shadowed).
+        if (s.highlight) {
+          const w = ctx.measureText(s.text || '').width;
+          const pad = s.fontSize * TEXT_HIGHLIGHT_PAD_RATIO;
+          const top = s.y - s.fontSize;
+          const bottom = s.y + s.fontSize * 0.3;
+          const r = Math.min(pad, (bottom - top) / 2);
+          const x0 = s.x - pad, y0 = top, bw = w + pad * 2, bh = bottom - top;
+          ctx.fillStyle = TEXT_HIGHLIGHT_FILL;
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(x0, y0, bw, bh, r);
+          } else {
+            ctx.rect(x0, y0, bw, bh);
+          }
+          ctx.fill();
+        }
+        // Drop shadow wraps only the glyph fill, then is reset.
+        if (s.shadow) {
+          ctx.shadowColor = TEXT_SHADOW_COLOR;
+          ctx.shadowBlur = s.fontSize * TEXT_SHADOW_BLUR_RATIO;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = s.fontSize * TEXT_SHADOW_OFFSET_RATIO;
+        }
+        ctx.fillStyle = s.color;
         ctx.fillText(s.text, s.x, s.y);
+        if (s.shadow) {
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+        }
         return;
       }
       if (s.type === 'image') {
         const cacheKey = s.dataUrl.slice(0, 64);
-        let img = imageCache.get(cacheKey);
+        let img = imageCache[cacheKey];
         if (!img) {
           img = new Image();
           img.onload = () => redrawAll();
           img.src = s.dataUrl;
-          imageCache.set(cacheKey, img);
+          imageCache[cacheKey] = img;
         }
         if (img.complete && img.naturalWidth > 0) {
           ctx.globalCompositeOperation = 'source-over';
@@ -627,23 +1327,29 @@
       if (!s.points || s.points.length < 2) return;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.lineWidth = s.width;
+
+      // Rainbow: smoothed, per-segment hue (and variable width when the points
+      // carry `w`; older strokes without `w` fall back to the base width).
       if (s.rainbow && !s.eraser) {
         ctx.globalCompositeOperation = 'source-over';
-        for (let i = 1; i < s.points.length; i++) {
-          ctx.beginPath();
-          ctx.moveTo(s.points[i - 1].x, s.points[i - 1].y);
-          ctx.lineTo(s.points[i].x, s.points[i].y);
-          ctx.strokeStyle = rainbowColor(i);
-          ctx.stroke();
-        }
+        strokeSmoothSegments(ctx, s.points, rainbowColor, s.width);
         return;
       }
-      ctx.beginPath();
-      ctx.moveTo(s.points[0].x, s.points[0].y);
-      for (let i = 1; i < s.points.length; i++) {
-        ctx.lineTo(s.points[i].x, s.points[i].y);
+
+      // Variable-width pen: smoothed, per-segment width baked into the points.
+      const hasVarWidth = !s.eraser && s.points.some((p) => typeof p.w === 'number');
+      if (hasVarWidth) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = s.color;
+        strokeSmoothSegments(ctx, s.points, null, s.width);
+        return;
       }
+
+      // Uniform width (eraser, and legacy strokes saved before variable width):
+      // a single smooth quadratic path at the base width.
+      ctx.lineWidth = s.width;
+      ctx.beginPath();
+      buildSmoothPath(ctx, s.points);
       ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
       if (s.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
@@ -680,15 +1386,27 @@
         ctx.font = item.fontSize + 'px sans-serif';
         const w = ctx.measureText(item.text || '').width;
         ctx.restore();
-        // fillText uses left/alphabetic baseline at (x, y).
-        return { minX: item.x + dx, minY: item.y + dy - item.fontSize, maxX: item.x + dx + w, maxY: item.y + dy + item.fontSize * 0.3 };
+        // fillText uses left/alphabetic baseline at (x, y). When a highlight
+        // panel is drawn it extends horizontally by the padding on each side.
+        const pad = item.highlight ? item.fontSize * TEXT_HIGHLIGHT_PAD_RATIO : 0;
+        return { minX: item.x + dx - pad, minY: item.y + dy - item.fontSize, maxX: item.x + dx + w + pad, maxY: item.y + dy + item.fontSize * 0.3 };
       }
       if (item.type === 'emoji') {
         const h = item.size / 2;
         return { minX: item.x + dx - h, minY: item.y + dy - h, maxX: item.x + dx + h, maxY: item.y + dy + h };
       }
       if (item.type === 'image') {
-        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + item.w, maxY: item.y + dy + item.h };
+        const w = item.w != null ? item.w : item.width;
+        const h = item.h != null ? item.h : item.height;
+        return { minX: item.x + dx, minY: item.y + dy, maxX: item.x + dx + w, maxY: item.y + dy + h };
+      }
+      if (item.type === 'shape') {
+        // Bounding box spans both endpoints, padded for stroke width and any
+        // arrowhead so the whole primitive is selectable.
+        const pad = (item.width || 1) / 2 + (item.shape === 'arrow' ? Math.max(item.width * 3.5, 12) : 4);
+        const minX = Math.min(item.x0, item.x1), maxX = Math.max(item.x0, item.x1);
+        const minY = Math.min(item.y0, item.y1), maxY = Math.max(item.y0, item.y1);
+        return { minX: minX + dx - pad, minY: minY + dy - pad, maxX: maxX + dx + pad, maxY: maxY + dy + pad };
       }
       if (item.points && item.points.length) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -708,6 +1426,7 @@
     function hitTest(wx, wy) {
       for (let i = strokes.length - 1; i >= 0; i--) {
         const item = strokes[i].stroke_data || strokes[i];
+        if (item.hidden) continue; // hidden layers aren't selectable/eraseable
         const b = getLayerBBox(item);
         if (b && wx >= b.minX && wx <= b.maxX && wy >= b.minY && wy <= b.maxY) {
           return strokes[i];
@@ -738,6 +1457,53 @@
       ctx.closePath();
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Images get 8 draggable handles (4 corners + 4 side midpoints) so they
+      // can be scaled. High-contrast (purple fill, white ring) to stay visible
+      // on any background.
+      if (item.type === 'image') {
+        const handles = getSelectedImageHandles();
+        if (handles) {
+          for (const c of handles) {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, RESIZE_HANDLE_R, 0, Math.PI * 2);
+            ctx.fillStyle = '#7c3aed';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // Screen-space positions of all 8 handles for the selected image, in the
+    // index order [TL,TR,BR,BL, top, right, bottom, left], or null.
+    function getSelectedImageHandles() {
+      if (!selectedLayer) return null;
+      const item = selectedLayer.stroke_data || selectedLayer;
+      if (item.type !== 'image') return null;
+      const b = getLayerBBox(item);
+      if (!b) return null;
+      const tl = worldToScreen(b.minX, b.minY);
+      const tr = worldToScreen(b.maxX, b.minY);
+      const br = worldToScreen(b.maxX, b.maxY);
+      const bl = worldToScreen(b.minX, b.maxY);
+      const mid = (a, c) => ({ x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 });
+      return [tl, tr, br, bl, mid(tl, tr), mid(tr, br), mid(br, bl), mid(bl, tl)];
+    }
+
+    // Index (0..7) of the handle under a screen point, or -1. Nearest wins so
+    // adjacent corner/side hit-zones don't fight.
+    function hitResizeHandle(sx, sy) {
+      const handles = getSelectedImageHandles();
+      if (!handles) return -1;
+      let best = -1, bestD = RESIZE_HIT_R;
+      for (let i = 0; i < handles.length; i++) {
+        const d = Math.hypot(handles[i].x - sx, handles[i].y - sy);
+        if (d <= bestD) { bestD = d; best = i; }
+      }
+      return best;
     }
 
     // --- Selection / layer manipulation ---
@@ -821,6 +1587,78 @@
       }
     }
 
+    // Start scaling the selected image by dragging handle `handle` (0..7).
+    // We bake any pending dx/dy translation into x/y so resize math works in
+    // a single coordinate frame, and pin the edge/corner opposite the handle.
+    function beginResize(handle, pos) {
+      if (!selectedLayer) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      if (sd.type !== 'image') return;
+      const def = HANDLE_DEFS[handle];
+      if (!def) return;
+      // Normalize the legacy {width,height} shape to {w,h}.
+      if (sd.w == null && sd.width != null) { sd.w = sd.width; sd.h = sd.height; }
+      isResizingLayer = true;
+      resizeDef = def;
+      resizeChanged = false;
+      resizeBefore = { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 };
+      // Fold translation into position.
+      sd.x = sd.x + (sd.dx || 0);
+      sd.y = sd.y + (sd.dy || 0);
+      sd.dx = 0; sd.dy = 0;
+      resizeOrig = { w: sd.w, h: sd.h, x: sd.x, y: sd.y };
+      // Pinned edge stays fixed in world space.
+      resizeAnchor = {
+        x: def.anchorRight ? sd.x + sd.w : sd.x,
+        y: def.anchorBottom ? sd.y + sd.h : sd.y
+      };
+    }
+
+    function updateResize(pos) {
+      if (!isResizingLayer || !selectedLayer || !resizeDef) return;
+      const sd = selectedLayer.stroke_data || selectedLayer;
+      const def = resizeDef;
+      let newW = resizeOrig.w;
+      let newH = resizeOrig.h;
+      if (def.corner) {
+        // Corner: lock aspect, follow whichever axis the pointer moved further.
+        const pw = Math.abs(pos.x - resizeAnchor.x);
+        const ph = Math.abs(pos.y - resizeAnchor.y);
+        let f = Math.max(pw / resizeOrig.w, ph / resizeOrig.h);
+        const fMin = Math.max(MIN_IMAGE_PX / resizeOrig.w, MIN_IMAGE_PX / resizeOrig.h);
+        f = Math.max(f, fMin);
+        newW = resizeOrig.w * f;
+        newH = resizeOrig.h * f;
+      } else {
+        // Side midpoint: resize the single axis this handle controls.
+        if (def.ax) newW = Math.max(MIN_IMAGE_PX, Math.abs(pos.x - resizeAnchor.x));
+        if (def.ay) newH = Math.max(MIN_IMAGE_PX, Math.abs(pos.y - resizeAnchor.y));
+      }
+      sd.w = newW;
+      sd.h = newH;
+      sd.x = def.anchorRight ? resizeAnchor.x - newW : resizeAnchor.x;
+      sd.y = def.anchorBottom ? resizeAnchor.y - newH : resizeAnchor.y;
+      resizeChanged = true;
+      redrawAll();
+    }
+
+    function endResize() {
+      if (!isResizingLayer) return;
+      isResizingLayer = false;
+      resizeDef = null;
+      if (resizeChanged && selectedLayer && resizeBefore) {
+        const sd = selectedLayer.stroke_data || selectedLayer;
+        recordAction({
+          type: 'resize',
+          id: selectedLayer.id,
+          before: resizeBefore,
+          after: { x: sd.x, y: sd.y, w: sd.w, h: sd.h, dx: sd.dx || 0, dy: sd.dy || 0 }
+        });
+        patchLayer(selectedLayer.id, { stroke_data: sd });
+      }
+      resizeBefore = null;
+    }
+
     function eraseAt(pos) {
       const hit = hitTest(pos.x, pos.y);
       if (hit) {
@@ -848,11 +1686,165 @@
       }
     }
 
+    // Generalized delete (used by the layer panel; deleteSelected handles the
+    // currently-selected layer).
+    function deleteLayerRow(layer) {
+      if (!layer) return;
+      recordAction({ type: 'delete', id: layer.id, data: layer.stroke_data || layer, z_index: layer.z_index });
+      removeLayerById(layer.id);
+    }
+
+    // Move a layer one step in z-order by swapping z_index values with its
+    // neighbour. dir 'up' = toward the front (higher z), 'down' = toward back.
+    async function moveLayerStep(layer, dir) {
+      sortStrokes(); // ascending by z_index
+      const idx = strokes.findIndex(s => s.id === layer.id);
+      if (idx === -1) return;
+      const neighbourIdx = dir === 'up' ? idx + 1 : idx - 1;
+      if (neighbourIdx < 0 || neighbourIdx >= strokes.length) return;
+      const a = strokes[idx], b = strokes[neighbourIdx];
+      const za = (a.z_index != null ? a.z_index : a.id);
+      const zb = (b.z_index != null ? b.z_index : b.id);
+      const before = a.z_index;
+      const r1 = await patchLayer(a.id, { z_index: zb });
+      const r2 = await patchLayer(b.id, { z_index: za });
+      a.z_index = r1 ? r1.z_index : zb;
+      b.z_index = r2 ? r2.z_index : za;
+      recordAction({ type: 'reorder', id: a.id, before, after: a.z_index });
+      sortStrokes();
+      redrawAll();
+    }
+
+    // Toggle a layer's shared visibility. Persisted in stroke_data.hidden so it
+    // syncs to other clients via the PATCH broadcast.
+    async function toggleLayerHidden(layer) {
+      const sd = layer.stroke_data || layer;
+      sd.hidden = !sd.hidden;
+      if (sd.hidden && selectedLayer && selectedLayer.id === layer.id) deselectLayer();
+      await patchLayer(layer.id, { stroke_data: sd });
+      redrawAll();
+    }
+
+    // --- Layers panel ---
+
+    function layerLabel(item) {
+      if (!item) return 'Layer';
+      switch (item.type) {
+        case 'text': {
+          const t = (item.text || '').trim();
+          return 'Text: ' + (t.length > 20 ? t.slice(0, 20) + '…' : t);
+        }
+        case 'emoji': return 'Emoji ' + (item.emoji || '');
+        case 'image': return 'Image';
+        case 'shape': {
+          const names = { rect: 'Rectangle', circle: 'Circle', arrow: 'Arrow', line: 'Line' };
+          return names[item.shape] || 'Shape';
+        }
+        default:
+          if (item.eraser) return 'Eraser mask';
+          if (item.rainbow) return 'Rainbow';
+          return 'Pen';
+      }
+    }
+
+    function makePanelBtn(svg, title, onClick, extraClass) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.title = title;
+      b.className = 'w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 ' + (extraClass || '');
+      b.innerHTML = svg;
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+
+    const PANEL_ICONS = {
+      eye: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+      eyeOff: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+      up: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>',
+      down: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+      front: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>',
+      back: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>',
+      trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>'
+    };
+
+    function renderLayerPanel() {
+      const panel = document.getElementById('layers-panel');
+      if (!panel || panel.classList.contains('hidden')) return;
+      const list = document.getElementById('layers-list');
+      list.innerHTML = '';
+      if (!strokes.length) {
+        const empty = document.createElement('p');
+        empty.className = 'text-xs text-zinc-400 dark:text-zinc-500 text-center py-6';
+        empty.textContent = 'No layers yet — draw something.';
+        list.appendChild(empty);
+        return;
+      }
+      // Topmost first: walk the z-sorted (ascending) array in reverse.
+      sortStrokes();
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const layer = strokes[i];
+        const item = layer.stroke_data || layer;
+        const isSel = selectedLayer && selectedLayer.id === layer.id;
+
+        const row = document.createElement('div');
+        row.className = 'rounded-lg px-2 py-1.5 cursor-pointer border ' +
+          (isSel
+            ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/10'
+            : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-700/60');
+        row.addEventListener('click', () => {
+          if (item.hidden) return; // hidden layers can't be selected on canvas
+          if (selectedLayer && selectedLayer.id === layer.id) { deselectLayer(); }
+          else { selectLayer(layer); }
+        });
+
+        const top = document.createElement('div');
+        top.className = 'flex items-center justify-between gap-2';
+        const label = document.createElement('span');
+        label.className = 'text-xs font-medium text-zinc-700 dark:text-zinc-200 truncate' + (item.hidden ? ' opacity-50' : '');
+        label.textContent = layerLabel(item);
+        const owner = document.createElement('span');
+        owner.className = 'text-[10px] text-zinc-400 dark:text-zinc-500 truncate flex-shrink-0 max-w-[5.5rem]';
+        owner.textContent = layer.username || '';
+        top.appendChild(label);
+        top.appendChild(owner);
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-0.5 mt-1';
+        actions.appendChild(makePanelBtn(item.hidden ? PANEL_ICONS.eyeOff : PANEL_ICONS.eye,
+          item.hidden ? 'Show' : 'Hide', () => toggleLayerHidden(layer)));
+        actions.appendChild(makePanelBtn(PANEL_ICONS.up, 'Move up', () => moveLayerStep(layer, 'up')));
+        actions.appendChild(makePanelBtn(PANEL_ICONS.down, 'Move down', () => moveLayerStep(layer, 'down')));
+        actions.appendChild(makePanelBtn(PANEL_ICONS.front, 'Bring to front', async () => {
+          const before = layer.z_index;
+          const res = await patchLayer(layer.id, { z_index: 'front' });
+          if (res) { layer.z_index = res.z_index; recordAction({ type: 'reorder', id: layer.id, before, after: res.z_index }); sortStrokes(); redrawAll(); }
+        }));
+        actions.appendChild(makePanelBtn(PANEL_ICONS.back, 'Send to back', async () => {
+          const before = layer.z_index;
+          const res = await patchLayer(layer.id, { z_index: 'back' });
+          if (res) { layer.z_index = res.z_index; recordAction({ type: 'reorder', id: layer.id, before, after: res.z_index }); sortStrokes(); redrawAll(); }
+        }));
+        actions.appendChild(makePanelBtn(PANEL_ICONS.trash, 'Delete layer', () => deleteLayerRow(layer), 'text-red-500 ml-auto'));
+
+        row.appendChild(top);
+        row.appendChild(actions);
+        list.appendChild(row);
+      }
+    }
+
+    function updateUndoRedoButtons() {
+      const u = document.getElementById('btn-undo');
+      const r = document.getElementById('btn-redo');
+      if (u) u.style.opacity = undoStack.length ? '1' : '0.35';
+      if (r) r.style.opacity = redoActions.length ? '1' : '0.35';
+    }
+
     // --- Action-history undo/redo ---
 
     function recordAction(a) {
       undoStack.push(a);
       redoActions = [];
+      updateUndoRedoButtons();
     }
 
     async function recreateLayer(action) {
@@ -886,7 +1878,20 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.before);
       }
+    }
+
+    // Restore a saved image geometry snapshot {x,y,w,h,dx,dy}.
+    function applyGeometry(id, g) {
+      const l = findLayer(id);
+      if (!l) return;
+      const sd = l.stroke_data || l;
+      sd.x = g.x; sd.y = g.y; sd.w = g.w; sd.h = g.h;
+      sd.dx = g.dx || 0; sd.dy = g.dy || 0;
+      patchLayer(id, { stroke_data: sd });
+      redrawAll();
     }
 
     async function applyRedo(a) {
@@ -910,8 +1915,11 @@
           sortStrokes();
           redrawAll();
         }
+      } else if (a.type === 'resize') {
+        applyGeometry(a.id, a.after);
       }
     }
+
 
     function getPos(e) {
       let sx, sy;
@@ -923,6 +1931,13 @@
         sy = e.clientY;
       }
       return screenToWorld(sx, sy);
+    }
+
+    function getScreenPos(e) {
+      if (e.touches && e.touches.length > 0) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
     }
 
     function zoomAtPoint(cx, cy, newScale) {
@@ -938,6 +1953,12 @@
 
     function updateZoomIndicator() {
       document.getElementById('zoom-indicator').textContent = Math.round(scale * 100) + '%';
+    }
+
+    // Toolbar zoom-out: step the zoom down about the viewport center.
+    // zoomAtPoint clamps to MIN_SCALE, so repeated clicks stop at 5%.
+    function zoomOut() {
+      zoomAtPoint(canvas.width / 2, canvas.height / 2, scale / ZOOM_STEP);
     }
 
     function resetView() {
@@ -971,8 +1992,11 @@
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
       document.getElementById('btn-emoji').classList.toggle('active', newTool === 'emoji');
       document.getElementById('btn-shapes').classList.toggle('active', newTool === 'shape');
+      document.getElementById('btn-comment').classList.toggle('active', newTool === 'comment');
       if (newTool !== 'emoji') hideEmojiPicker();
       if (newTool !== 'shape') hideShapesPopover();
+      if (newTool !== 'comment') hideComposer();
+      if (newTool !== 'text') hideTextPopover(); else showTextPopover();
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
@@ -993,6 +2017,10 @@
         canvas.classList.remove('panning');
         brushCursor.style.display = 'none';
         canvas.style.cursor = 'crosshair';
+      } else if (newTool === 'comment') {
+        canvas.classList.remove('panning');
+        brushCursor.style.display = 'none';
+        canvas.style.cursor = 'cell';
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
@@ -1006,7 +2034,7 @@
         const b = document.createElement('button');
         b.type = 'button';
         b.textContent = emoji;
-        b.className = 'w-9 h-9 rounded-lg flex items-center justify-center text-xl hover:bg-zinc-100';
+        b.className = 'w-9 h-9 rounded-lg flex items-center justify-center text-xl hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors';
         b.addEventListener('click', () => {
           selectedEmoji = emoji;
           hideEmojiPicker();
@@ -1048,9 +2076,10 @@
 
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
-      // Only freehand tools draw strokes now. Eraser deletes whole layers,
-      // select moves them, and move/text/emoji/image are handled elsewhere.
-      if (tool !== 'pen' && tool !== 'rainbow') return;
+      // Freehand tools and the shape tool draw here. Eraser deletes whole
+      // layers, select moves them, and move/text/emoji/image are handled
+      // elsewhere.
+      if (tool !== 'pen' && tool !== 'rainbow' && !isShapeTool()) return;
       e.preventDefault();
       isDrawing = true;
       const pos = getPos(e);
@@ -1060,12 +2089,16 @@
         currentStroke = null;
         return;
       }
+      pos.t = performance.now();
+      const pr0 = getPressure(e);
+      if (pr0 > 0) pos.pr = pr0;
       currentStroke = {
         points: [pos],
         color: strokeColor,
         width: strokeWidth,
         eraser: false,
-        rainbow: tool === 'rainbow'
+        rainbow: tool === 'rainbow',
+        emaWidth: null
       };
     }
 
@@ -1098,22 +2131,61 @@
       if (!currentStroke) return;
       e.preventDefault();
       const pos = getPos(e);
-      currentStroke.points.push(pos);
+      const pts = currentStroke.points;
+      const last = pts[pts.length - 1];
 
+      // Minimum-distance thinning (world space): drop points too close to the
+      // previous one so high-frequency move events don't bloat the stroke.
+      const dx = pos.x - last.x;
+      const dy = pos.y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < MIN_POINT_DIST) return;
+
+      const now = performance.now();
+      pos.t = now;
+      const pr = getPressure(e);
+      if (pr > 0) pos.pr = pr;
+
+      // Provisional per-point width for the live preview — mirrors the
+      // commit-time bake (computePointWidths) so the preview matches the
+      // committed render. Eraser stays uniform width.
+      if (!currentStroke.eraser) {
+        let target;
+        if (pr > 0) {
+          target = pressureToWidth(pr, currentStroke.width);
+        } else {
+          const dt = Math.max(1, now - (last.t || now));
+          target = speedToWidth(dist / dt, currentStroke.width);
+        }
+        currentStroke.emaWidth = currentStroke.emaWidth == null
+          ? target
+          : (WIDTH_EMA_ALPHA * target + (1 - WIDTH_EMA_ALPHA) * currentStroke.emaWidth);
+        pos.w = currentStroke.emaWidth;
+      }
+
+      pts.push(pos);
+
+      // Draw the newly-added smoothed segment incrementally. The quadratic
+      // midpoint method is causal, so the segment up to the previous midpoint
+      // is final; endDraw's redrawAll repaints the fully-smoothed stroke.
       const cos = Math.cos(rotation), sin = Math.sin(rotation);
       ctx.setTransform(scale * cos, scale * sin, -scale * sin, scale * cos, offsetX, offsetY);
+      const n = pts.length;
       ctx.beginPath();
-      const pts = currentStroke.points;
-      if (pts.length >= 2) {
-        ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
-        ctx.lineTo(pos.x, pos.y);
+      if (n === 2) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        const a = pts[n - 3], b = pts[n - 2], c = pts[n - 1];
+        ctx.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
+        ctx.quadraticCurveTo(b.x, b.y, (b.x + c.x) / 2, (b.y + c.y) / 2);
       }
       if (currentStroke.rainbow && !currentStroke.eraser) {
-        ctx.strokeStyle = rainbowColor(pts.length - 1);
+        ctx.strokeStyle = rainbowColor(n - 1);
       } else {
         ctx.strokeStyle = currentStroke.eraser ? '#ffffff' : currentStroke.color;
       }
-      ctx.lineWidth = currentStroke.width;
+      ctx.lineWidth = currentStroke.eraser ? currentStroke.width : (pos.w || currentStroke.width);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       if (currentStroke.eraser) {
@@ -1142,12 +2214,14 @@
               x0: shapeStart.x, y0: shapeStart.y,
               x1: shapeEnd.x, y1: shapeEnd.y,
               color: strokeColor,
-              width: strokeWidth
+              width: strokeWidth,
+              dx: 0,
+              dy: 0
             };
             const saved = await saveStroke(strokeData);
             if (saved) {
-              strokes.push({ id: saved.id, stroke_data: strokeData });
-              redoStack = [];
+              strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+              recordAction({ type: 'add', id: saved.id, data: strokeData });
             }
           }
         }
@@ -1159,8 +2233,23 @@
       if (!currentStroke) return;
       e.preventDefault();
       if (currentStroke.points.length >= 2) {
+        // Bake the final per-point width from the captured speed/pressure, then
+        // persist only {x, y, w} (eraser stays uniform: {x, y}). Computing here
+        // keeps stored strokes self-describing — other clients and re-renders
+        // don't need the speed/pressure model.
+        let points;
+        if (currentStroke.eraser) {
+          points = currentStroke.points.map((p) => ({ x: p.x, y: p.y }));
+        } else {
+          computePointWidths(currentStroke.points, currentStroke.width);
+          points = currentStroke.points.map((p) => ({
+            x: p.x,
+            y: p.y,
+            w: Math.round(p.w * 10) / 10
+          }));
+        }
         const strokeData = {
-          points: currentStroke.points,
+          points: points,
           color: currentStroke.color,
           width: currentStroke.width,
           eraser: currentStroke.eraser,
@@ -1176,9 +2265,19 @@
       }
       currentStroke = null;
       isDrawing = false;
+      redrawAll();
     }
 
     // --- Mouse event listeners ---
+
+    // Stylus pressure capture. Pointer events fire alongside mouse events; we
+    // only stash pressure for actual pens so the mouse path keeps using the
+    // speed model (getPressure returns this for non-touch input).
+    function trackPenPressure(e) {
+      penPressure = (e.pointerType === 'pen' && e.pressure > 0) ? e.pressure : 0;
+    }
+    canvas.addEventListener('pointerdown', trackPenPressure);
+    canvas.addEventListener('pointermove', trackPenPressure);
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.target.closest('.toolbar')) return;
@@ -1218,9 +2317,18 @@
         openTextInput(e.clientX, e.clientY);
         return;
       }
-      // Select tool: pick / start dragging a layer
+      // Left click in comment mode: open composer for a new thread
+      if (tool === 'comment' && e.button === 0) {
+        e.preventDefault();
+        openComposer(e.clientX, e.clientY);
+        return;
+      }
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select' && e.button === 0) {
         e.preventDefault();
+        const sp = getScreenPos(e);
+        const corner = hitResizeHandle(sp.x, sp.y);
+        if (corner !== -1) { beginResize(corner, getPos(e)); return; }
         beginLayerDrag(getPos(e));
         return;
       }
@@ -1253,9 +2361,18 @@
         redrawAll();
         return;
       }
+      if (isResizingLayer) {
+        updateResize(getPos(e));
+        return;
+      }
       if (isDraggingLayer) {
         updateLayerDrag(getPos(e));
         return;
+      }
+      // Hover feedback over resize handles of a selected image.
+      if (tool === 'select') {
+        const h = hitResizeHandle(e.clientX, e.clientY);
+        canvas.style.cursor = h !== -1 ? HANDLE_DEFS[h].cursor : 'default';
       }
       if (isErasing) {
         eraseAt(getPos(e));
@@ -1270,6 +2387,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -1282,6 +2400,7 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) { isErasing = false; return; }
       endDraw(e);
@@ -1367,6 +2486,14 @@
         return;
       }
 
+      if (tool === 'comment') {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          openComposer(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        return;
+      }
+
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1) {
@@ -1384,10 +2511,15 @@
         return;
       }
 
-      // Select tool: pick / start dragging a layer
+      // Select tool: resize handle → drag corner; otherwise pick / move layer
       if (tool === 'select') {
         e.preventDefault();
-        if (e.touches.length === 1) beginLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          const sp = getScreenPos(e);
+          const corner = hitResizeHandle(sp.x, sp.y);
+          if (corner !== -1) beginResize(corner, getPos(e));
+          else beginLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -1452,7 +2584,10 @@
 
       if (tool === 'select') {
         e.preventDefault();
-        if (isDraggingLayer && e.touches.length === 1) updateLayerDrag(getPos(e));
+        if (e.touches.length === 1) {
+          if (isResizingLayer) updateResize(getPos(e));
+          else if (isDraggingLayer) updateLayerDrag(getPos(e));
+        }
         return;
       }
 
@@ -1480,7 +2615,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -1497,7 +2632,7 @@
         isPanning = false;
         return;
       }
-      if (tool === 'select') { endLayerDrag(); return; }
+      if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') { isErasing = false; return; }
       brushCursor.style.display = 'none';
       endDraw(e);
@@ -1512,18 +2647,29 @@
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
-    document.getElementById('btn-text').addEventListener('click', () => setActiveTool('text'));
+    document.getElementById('btn-text').addEventListener('click', () => {
+      // Re-clicking while already on the text tool toggles the options pop-up.
+      if (tool === 'text') {
+        const tp = document.getElementById('text-popover');
+        if (tp.classList.contains('hidden')) showTextPopover(); else hideTextPopover();
+      } else {
+        setActiveTool('text');
+      }
+    });
     document.getElementById('btn-select').addEventListener('click', () => setActiveTool('select'));
     document.getElementById('btn-move').addEventListener('click', () => setActiveTool('move'));
+    document.getElementById('btn-comment').addEventListener('click', () => setActiveTool('comment'));
 
     // Layer actions (visible only while a layer is selected)
     document.getElementById('btn-front').addEventListener('click', () => reorderSelected('front'));
     document.getElementById('btn-back').addEventListener('click', () => reorderSelected('back'));
     document.getElementById('btn-delete-layer').addEventListener('click', () => deleteSelected());
 
-    // Image insert — file picker, downscale, place centered in current view
+    // Image insert — file picker, downscale, place centered in current view.
+    // The picker is opened by the native <label for> association (see the
+    // #btn-image label in the toolbar), which is far more reliable on mobile
+    // than a JS-proxied input.click(). We only handle the resulting change.
     const imageInput = document.getElementById('image-input');
-    document.getElementById('btn-image').addEventListener('click', () => imageInput.click());
     imageInput.addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (file) insertImageFile(file);
@@ -1554,10 +2700,14 @@
           const item = { type: 'image', src, x: center.x - worldW / 2, y: center.y - worldH / 2, w: worldW, h: worldH, dx: 0, dy: 0 };
           saveStroke(item).then((saved) => {
             if (saved) {
-              strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index });
+              const layer = { id: saved.id, stroke_data: item, z_index: saved.z_index };
+              strokes.push(layer);
               recordAction({ type: 'add', id: saved.id, data: item });
               sortStrokes();
-              redrawAll();
+              // Drop into select mode with the new image selected so its
+              // resize handles are immediately visible and usable.
+              setActiveTool('select');
+              selectLayer(layer);
             }
           });
         };
@@ -1576,66 +2726,10 @@
     });
 
     document.getElementById('btn-image').addEventListener('click', () => {
-      document.getElementById('image-file-input').click();
+      document.getElementById('image-input').click();
     });
 
-    document.getElementById('image-file-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
 
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onerror = () => URL.revokeObjectURL(objectUrl);
-      img.onload = async () => {
-        URL.revokeObjectURL(objectUrl);
-
-        const MAX_PX = 600;
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        if (w > MAX_PX || h > MAX_PX) {
-          if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX; }
-          else { w = Math.round(w * MAX_PX / h); h = MAX_PX; }
-        }
-
-        const offscreen = document.createElement('canvas');
-        offscreen.width = w;
-        offscreen.height = h;
-        offscreen.getContext('2d').drawImage(img, 0, 0, w, h);
-
-        const dataUrl = offscreen.toDataURL(
-          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          0.85
-        );
-
-        const MAX_WORLD = 400;
-        let worldW = w;
-        let worldH = h;
-        if (worldW > MAX_WORLD || worldH > MAX_WORLD) {
-          if (worldW >= worldH) { worldH = Math.round(worldH * MAX_WORLD / worldW); worldW = MAX_WORLD; }
-          else { worldW = Math.round(worldW * MAX_WORLD / worldH); worldH = MAX_WORLD; }
-        }
-
-        const viewCentreX = (canvas.width / 2 - offsetX) / scale;
-        const viewCentreY = (canvas.height / 2 - offsetY) / scale;
-        const strokeData = {
-          type: 'image',
-          x: viewCentreX - worldW / 2,
-          y: viewCentreY - worldH / 2,
-          width: worldW,
-          height: worldH,
-          dataUrl
-        };
-
-        const saved = await saveStroke(strokeData);
-        if (saved) {
-          strokes.push({ id: saved.id, stroke_data: strokeData });
-          redoStack = [];
-          redrawAll();
-        }
-      };
-      img.src = objectUrl;
-    });
     buildEmojiPicker();
 
     // --- Shapes tool wiring ---
@@ -1644,7 +2738,11 @@
     const SHAPE_ICONS = {
       line: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>',
       rect: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>',
-      circle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>'
+      circle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/></svg>',
+      arrow: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="11 5 19 5 19 13"/></svg>',
+      triangle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 L21 20 L3 20 Z"/></svg>',
+      heart: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7.5-4.6-10-9A5.2 5.2 0 0 1 12 6a5.2 5.2 0 0 1 10 6c-2.5 4.4-10 9-10 9z"/></svg>',
+      prism: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 L3 19 L14 19 Z"/><path d="M9 4 L15 6 L21 17 L14 19"/><path d="M3 19 L9 21 L15 6"/></svg>'
     };
     function hideShapesPopover() { shapesPopover.classList.add('hidden'); }
     function setShapeIcon() {
@@ -1655,8 +2753,56 @@
         b.classList.toggle('active', b.dataset.shape === shapeType);
       });
     }
+
+    // --- Premium brush state (populated from GET /api/brushes) ---
+    const premiumBrushes = new Set();   // ids that require a purchase
+    const unlockedBrushes = new Set();  // premium ids this user has unlocked
+    let brushPrice = null;
+    let brushPayee = '';
+
+    function isBrushLocked(id) {
+      return premiumBrushes.has(id) && !unlockedBrushes.has(id);
+    }
+
+    // Show/hide the 🔒 badge on each premium option to reflect unlock state.
+    function renderBrushLocks() {
+      shapesPopover.querySelectorAll('.shape-opt[data-premium]').forEach((b) => {
+        const locked = isBrushLocked(b.dataset.shape);
+        const badge = b.querySelector('.lock-badge');
+        if (badge) badge.style.display = locked ? '' : 'none';
+        b.title = locked
+          ? (b.dataset.shape === 'heart' ? 'Heart (premium — locked)' : 'Prism (premium — locked)')
+          : (b.dataset.shape.charAt(0).toUpperCase() + b.dataset.shape.slice(1));
+      });
+    }
+
+    async function loadBrushes() {
+      try {
+        const res = await fetch('/api/brushes', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        premiumBrushes.clear();
+        (data.premium || []).forEach((id) => premiumBrushes.add(id));
+        unlockedBrushes.clear();
+        (data.unlocked || []).forEach((id) => unlockedBrushes.add(id));
+        brushPrice = typeof data.price === 'number' ? data.price : null;
+        brushPayee = data.payee || '';
+      } catch (err) {
+        console.error('Load brushes failed:', err);
+      }
+      renderBrushLocks();
+    }
+
+    // Treat premium shapes as locked until GET /api/brushes proves otherwise,
+    // so the lock badge / gating is correct during the pre-load window.
+    shapesPopover.querySelectorAll('.shape-opt[data-premium]').forEach((b) => {
+      premiumBrushes.add(b.dataset.shape);
+    });
+
     setShapeIcon();
     markActiveShapeOption();
+    renderBrushLocks();
+    loadBrushes();
 
     btnShapes.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1670,7 +2816,14 @@
     shapesPopover.addEventListener('click', (e) => e.stopPropagation());
     shapesPopover.querySelectorAll('.shape-opt').forEach((b) => {
       b.addEventListener('click', () => {
-        shapeType = b.dataset.shape;
+        const id = b.dataset.shape;
+        // Gate locked premium shapes: never assign shapeType, open the modal.
+        if (isBrushLocked(id)) {
+          hideShapesPopover();
+          openBrushModal();
+          return;
+        }
+        shapeType = id;
         setShapeIcon();
         markActiveShapeOption();
         setActiveTool('shape');
@@ -1679,12 +2832,128 @@
     });
     document.addEventListener('click', () => hideShapesPopover());
 
+    // --- Premium brush purchase flow ---
+    const brushModal = document.getElementById('brush-modal');
+    const brushModalStatus = document.getElementById('brush-modal-status');
+    const brushUnlockBtn = document.getElementById('brush-unlock');
+    let purchaseInFlight = false;
+
+    function setBrushModalStatus(msg) { brushModalStatus.textContent = msg || ''; }
+
+    function openBrushModal() {
+      setBrushModalStatus('');
+      const priceEl = document.getElementById('brush-price');
+      priceEl.textContent = brushPrice != null
+        ? ('One-time price: ' + brushPrice)
+        : 'One-time price: unavailable';
+      const bridgeReady = !!(window.usernode && typeof window.usernode.sendTransaction === 'function');
+      brushUnlockBtn.disabled = purchaseInFlight || !bridgeReady || brushPrice == null || !brushPayee;
+      if (!bridgeReady) {
+        brushUnlockBtn.title = 'Payment bridge unavailable — try reloading.';
+        setBrushModalStatus('Payment bridge unavailable. Reload to try again.');
+      } else if (!brushPayee || brushPrice == null) {
+        brushUnlockBtn.title = 'Purchase is not configured yet.';
+        setBrushModalStatus('Purchases are not configured for this board.');
+      } else {
+        brushUnlockBtn.title = '';
+      }
+      brushModal.style.display = 'flex';
+      brushModal.classList.remove('hidden');
+    }
+
+    function closeBrushModal() {
+      brushModal.style.display = 'none';
+      brushModal.classList.add('hidden');
+    }
+
+    // Pull a transaction id out of whatever shape the bridge returns.
+    function extractTxId(result) {
+      if (!result) return null;
+      const keys = ['tx_id', 'txid', 'txId', 'hash', 'tx_hash', 'txHash', 'id'];
+      for (const k of keys) {
+        if (typeof result[k] === 'string' && result[k]) return result[k];
+      }
+      if (result.tx) return extractTxId(result.tx);
+      return null;
+    }
+
+    async function startPurchase() {
+      if (purchaseInFlight) return;
+      const bridge = window.usernode;
+      if (!bridge || typeof bridge.sendTransaction !== 'function') {
+        setBrushModalStatus('Payment bridge unavailable. Reload to try again.');
+        return;
+      }
+      if (!brushPayee || brushPrice == null) {
+        setBrushModalStatus('Purchases are not configured for this board.');
+        return;
+      }
+      purchaseInFlight = true;
+      brushUnlockBtn.disabled = true;
+      setBrushModalStatus('Awaiting payment confirmation…');
+      try {
+        const result = await bridge.sendTransaction(brushPayee, brushPrice, 'whiteboard:premium-brushes');
+        const txId = extractTxId(result);
+        if (!txId) {
+          setBrushModalStatus('Could not read the transaction id. Please try again.');
+          return;
+        }
+        const res = await fetch('/api/brushes/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ tx_id: txId })
+        });
+        if (!res.ok) {
+          setBrushModalStatus('Saving your unlock failed. Please try again.');
+          return;
+        }
+        const data = await res.json();
+        (data.unlocked || []).forEach((id) => unlockedBrushes.add(id));
+        renderBrushLocks();
+        closeBrushModal();
+        showStatus('Premium brushes unlocked');
+      } catch (err) {
+        const msg = (err && err.message) || '';
+        if (/cancel/i.test(msg)) {
+          setBrushModalStatus('Purchase cancelled.');
+        } else {
+          setBrushModalStatus('Purchase failed, try again.');
+        }
+      } finally {
+        purchaseInFlight = false;
+        // Re-enable unless the bridge/config is genuinely unavailable.
+        const bridgeReady = !!(window.usernode && typeof window.usernode.sendTransaction === 'function');
+        brushUnlockBtn.disabled = !bridgeReady || brushPrice == null || !brushPayee;
+      }
+    }
+
+    brushUnlockBtn.addEventListener('click', startPurchase);
+    document.getElementById('brush-cancel').addEventListener('click', closeBrushModal);
+    brushModal.addEventListener('click', (e) => { if (e.target === brushModal) closeBrushModal(); });
+
     // Color palette button + popover
     (function initColorPalette() {
       const COLOR_SWATCHES = [
-        '#1c1917', '#6b7280', '#ffffff', '#ef4444',
-        '#f97316', '#eab308', '#22c55e', '#3b82f6',
-        '#8b5cf6', '#ec4899', '#14b8a6', '#92400e'
+        // Neutrals: black → white
+        '#000000', '#1c1917', '#44403c', '#6b7280', '#a1a1aa', '#ffffff',
+        // Reds
+        '#7f1d1d', '#dc2626', '#ef4444', '#f87171', '#fca5a5', '#fecaca',
+        // Oranges & ambers
+        '#9a3412', '#ea580c', '#f97316', '#fb923c', '#fdba74', '#fed7aa',
+        // Yellows
+        '#a16207', '#ca8a04', '#eab308', '#facc15', '#fde047', '#fef08a',
+        // Greens
+        '#166534', '#16a34a', '#22c55e', '#4ade80', '#86efac', '#bbf7d0',
+        // Teals & cyans
+        '#115e59', '#0d9488', '#14b8a6', '#06b6d4', '#22d3ee', '#a5f3fc',
+        // Blues
+        '#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe',
+        // Indigos & violets
+        '#3730a3', '#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe',
+        // Pinks & magentas
+        '#9d174d', '#db2777', '#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8',
+        // Browns & earth tones
+        '#451a03', '#78350f', '#92400e', '#b45309', '#d97706', '#fcd34d'
       ];
 
       const swatchWrap = document.getElementById('color-swatches');
@@ -1693,7 +2962,9 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform';
+        sw.dataset.swatch = color;
+        sw.className = 'w-6 h-6 rounded-md border hover:scale-110 transition-transform';
+        sw.style.borderColor = 'var(--swatch-border)';
         sw.addEventListener('click', () => {
           setStrokeColor(color);
           document.getElementById('color-popover').classList.add('hidden');
@@ -1701,6 +2972,7 @@
         });
         swatchWrap.appendChild(sw);
       });
+      syncSelectedSwatch('color-swatches', strokeColor);
 
       const btnColor = document.getElementById('btn-color');
       const colorPopover = document.getElementById('color-popover');
@@ -1708,7 +2980,7 @@
       function openColorPopover() {
         const rect = btnColor.getBoundingClientRect();
         colorPopover.style.top = (rect.bottom + 8) + 'px';
-        const left = Math.min(rect.left, window.innerWidth - 184);
+        const left = Math.min(rect.left, window.innerWidth - 232);
         colorPopover.style.left = Math.max(4, left) + 'px';
         colorPopover.classList.remove('hidden');
       }
@@ -1749,11 +3021,133 @@
       updateBrushCursor();
     });
 
+    // --- Text tool options pop-up (font family + size) ---
+    const TEXT_SIZE_MIN = 8;
+    const TEXT_SIZE_MAX = 200;
+    const btnText = document.getElementById('btn-text');
+    const textPopover = document.getElementById('text-popover');
+    const textFontSelect = document.getElementById('text-font-family');
+    const textSizeSlider = document.getElementById('text-size-slider');
+    const textSizeInput = document.getElementById('text-size-input');
+    const textShadowToggle = document.getElementById('text-shadow-toggle');
+    const textHighlightToggle = document.getElementById('text-highlight-toggle');
+
+    // Mirror the canvas shadow/highlight look onto the live DOM input. A
+    // box-shadow spread extends the highlight background by the padding
+    // without shifting where the glyphs sit, so the preview tracks the
+    // committed result. Cleared when the toggles are off.
+    function applyTextDecorToInput() {
+      if (textShadow) {
+        textInputEl.style.textShadow = TEXT_SHADOW_CSS;
+      } else {
+        textInputEl.style.textShadow = '';
+      }
+      if (textHighlight) {
+        const pad = textFontSize * scale * TEXT_HIGHLIGHT_PAD_RATIO;
+        textInputEl.style.backgroundColor = TEXT_HIGHLIGHT_CSS;
+        textInputEl.style.boxShadow = '0 0 0 ' + pad + 'px ' + TEXT_HIGHLIGHT_CSS;
+        textInputEl.style.borderRadius = pad + 'px';
+      } else {
+        textInputEl.style.backgroundColor = 'transparent';
+        textInputEl.style.boxShadow = '';
+        textInputEl.style.borderRadius = '';
+      }
+    }
+
+    function clampTextSize(n) {
+      if (!Number.isFinite(n)) return textFontSize;
+      return Math.min(TEXT_SIZE_MAX, Math.max(TEXT_SIZE_MIN, Math.round(n)));
+    }
+
+    function showTextPopover() {
+      const rect = btnText.getBoundingClientRect();
+      textPopover.style.top = (rect.bottom + 8) + 'px';
+      const left = Math.min(rect.left, window.innerWidth - 240);
+      textPopover.style.left = Math.max(4, left) + 'px';
+      textPopover.classList.remove('hidden');
+    }
+
+    function hideTextPopover() {
+      textPopover.classList.add('hidden');
+    }
+
+    // Reflect the chosen size/family onto a text input that is currently open.
+    function applyTextStyleToOpenInput() {
+      if (textInputEl.style.display === 'none') return;
+      const screenFontSize = textFontSize * scale;
+      textInputEl.style.fontSize = screenFontSize + 'px';
+      textInputEl.style.fontFamily = textFontFamily;
+      textMeasureEl.style.fontSize = screenFontSize + 'px';
+      textMeasureEl.style.fontFamily = textFontFamily;
+      textMeasureEl.textContent = textInputEl.value || '';
+      textInputEl.style.width = Math.max(4, textMeasureEl.offsetWidth + 4) + 'px';
+      applyTextDecorToInput();
+    }
+
+    function setTextFontSize(n, opts) {
+      opts = opts || {};
+      textFontSize = clampTextSize(n);
+      if (!opts.skipSlider) textSizeSlider.value = textFontSize;
+      if (!opts.skipInput) textSizeInput.value = textFontSize;
+      applyTextStyleToOpenInput();
+    }
+
+    // Initialize controls from defaults.
+    textFontSelect.value = textFontFamily;
+    textSizeSlider.value = textFontSize;
+    textSizeInput.value = textFontSize;
+    textShadowToggle.checked = textShadow;
+    textHighlightToggle.checked = textHighlight;
+
+    textFontSelect.addEventListener('change', (e) => {
+      textFontFamily = e.target.value;
+      applyTextStyleToOpenInput();
+    });
+
+    textShadowToggle.addEventListener('change', (e) => {
+      textShadow = e.target.checked;
+      applyTextStyleToOpenInput();
+    });
+
+    textHighlightToggle.addEventListener('change', (e) => {
+      textHighlight = e.target.checked;
+      applyTextStyleToOpenInput();
+    });
+
+    textSizeSlider.addEventListener('input', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10), { skipSlider: true });
+    });
+
+    // While typing, stay lenient (allow empty/partial); commit-clamp on change/blur.
+    textSizeInput.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (!Number.isFinite(v)) return;
+      setTextFontSize(v, { skipInput: true });
+    });
+    textSizeInput.addEventListener('change', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+    textSizeInput.addEventListener('blur', (e) => {
+      setTextFontSize(parseInt(e.target.value, 10));
+    });
+
+    // Close on outside mousedown, but never when interacting with the pop-up,
+    // the text button, or the live text input (so editing options mid-type works).
+    document.addEventListener('mousedown', (e) => {
+      if (!textPopover.classList.contains('hidden') &&
+          !textPopover.contains(e.target) &&
+          !btnText.contains(e.target) &&
+          !textInputEl.contains(e.target)) {
+        hideTextPopover();
+      }
+    });
+
     document.getElementById('btn-undo').addEventListener('click', async () => {
       if (undoStack.length === 0) return;
       const a = undoStack.pop();
       await applyUndo(a);
       redoActions.push(a);
+      updateUndoRedoButtons();
     });
 
     document.getElementById('btn-redo').addEventListener('click', async () => {
@@ -1761,7 +3155,20 @@
       const a = redoActions.pop();
       await applyRedo(a);
       undoStack.push(a);
+      updateUndoRedoButtons();
     });
+
+    // Layers panel toggle
+    (function initLayersPanel() {
+      const panel = document.getElementById('layers-panel');
+      const btn = document.getElementById('btn-layers');
+      function open() { panel.classList.remove('hidden'); btn.classList.add('active'); renderLayerPanel(); }
+      function close() { panel.classList.add('hidden'); btn.classList.remove('active'); }
+      btn.addEventListener('click', () => {
+        if (panel.classList.contains('hidden')) open(); else close();
+      });
+      document.getElementById('btn-layers-close').addEventListener('click', close);
+    })();
 
     function showConfirm(msg) {
       return new Promise((resolve) => {
@@ -1774,12 +3181,22 @@
           modal.classList.add('hidden');
           document.getElementById('confirm-ok').removeEventListener('click', onOk);
           document.getElementById('confirm-cancel').removeEventListener('click', onCancel);
+          modal.removeEventListener('mousedown', onBackdrop);
+          document.removeEventListener('keydown', onKey);
           resolve(result);
         }
         function onOk() { cleanup(true); }
         function onCancel() { cleanup(false); }
+        // Click on the dimmed backdrop (outside the dialog card) cancels.
+        function onBackdrop(e) { if (e.target === modal) cleanup(false); }
+        function onKey(e) {
+          if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+          else if (e.key === 'Enter') { e.preventDefault(); cleanup(true); }
+        }
         document.getElementById('confirm-ok').addEventListener('click', onOk);
         document.getElementById('confirm-cancel').addEventListener('click', onCancel);
+        modal.addEventListener('mousedown', onBackdrop);
+        document.addEventListener('keydown', onKey);
       });
     }
 
@@ -1798,6 +3215,7 @@
       strokes = [];
       undoStack = [];
       redoActions = [];
+      updateUndoRedoButtons();
       deselectLayer();
       redrawAll();
     });
@@ -1822,13 +3240,18 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault();
         if (e.shiftKey) {
           document.getElementById('btn-redo').click();
         } else {
           document.getElementById('btn-undo').click();
         }
+      }
+      // Ctrl+Y / Cmd+Y — redo alias
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+        e.preventDefault();
+        document.getElementById('btn-redo').click();
       }
       // Ctrl+0 / Cmd+0 to reset zoom
       if ((e.ctrlKey || e.metaKey) && e.key === '0') {
@@ -1857,6 +3280,7 @@
     });
 
     // Home button and zoom indicator click handlers
+    document.getElementById('btn-zoom-out').addEventListener('click', zoomOut);
     document.getElementById('btn-home').addEventListener('click', resetView);
     document.getElementById('zoom-indicator').addEventListener('click', resetView);
 
@@ -1871,9 +3295,16 @@
       '#dbeafe', '#fae8ff', '#27272a', '#0f172a'
     ];
 
+    const DEFAULT_BG_LIGHT = '#ffffff';
+    const DEFAULT_BG_DARK = '#18181b';
+
+    // The chosen background is the "paper": it's applied to the page body so
+    // it shows through the transparent canvas (and behind the dot grid). The
+    // canvas itself stays transparent so the grid texture remains visible and
+    // the eraser's destination-out compositing keeps working.
     function applyBackground(color) {
       document.body.style.backgroundColor = color;
-      canvas.style.backgroundColor = color;
+      canvas.style.backgroundColor = 'transparent';
     }
 
     function setBackground(color) {
@@ -1881,6 +3312,7 @@
       try { localStorage.setItem(BG_KEY, color); } catch (_) {}
       document.getElementById('bg-custom').value =
         /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#ffffff';
+      syncSelectedSwatch('bg-swatches', color);
     }
 
     (function initBackground() {
@@ -1890,7 +3322,9 @@
         sw.type = 'button';
         sw.title = color;
         sw.style.backgroundColor = color;
-        sw.className = 'w-7 h-7 rounded-md border border-zinc-300 hover:scale-110 transition-transform';
+        sw.dataset.swatch = color;
+        sw.className = 'w-7 h-7 rounded-md border hover:scale-110 transition-transform';
+        sw.style.borderColor = 'var(--swatch-border)';
         sw.addEventListener('click', () => {
           setBackground(color);
           document.getElementById('bg-popover').classList.add('hidden');
@@ -1916,7 +3350,10 @@
 
       let saved;
       try { saved = localStorage.getItem(BG_KEY); } catch (_) {}
-      setBackground(saved || '#ffffff');
+      // Theme-aware default when nothing is saved, so a first-time dark-mode
+      // user doesn't get a glaring white board. An explicit saved value wins.
+      const defaultBg = isDarkMode() ? DEFAULT_BG_DARK : DEFAULT_BG_LIGHT;
+      setBackground(saved || defaultBg);
     })();
 
     function showStatus(text) {
@@ -1924,6 +3361,22 @@
       el.textContent = text;
       el.style.opacity = '1';
       setTimeout(() => { el.style.opacity = '0'; }, 2000);
+    }
+
+    // --- Empty / loading states (DOM only; never captured in PDF export) ---
+    let boardLoading = true;
+
+    function setLoading(on) {
+      boardLoading = on;
+      document.getElementById('loading-indicator').classList.toggle('visible', on);
+      updateEmptyState();
+    }
+
+    // The empty-state hint shows only once loading has resolved and the board
+    // is genuinely empty. It reacts to local edits and remote SSE events alike.
+    function updateEmptyState() {
+      const empty = !boardLoading && strokes.length === 0;
+      document.getElementById('empty-state').style.display = empty ? 'flex' : 'none';
     }
 
     // --- Text tool helpers ---
@@ -1934,8 +3387,9 @@
       const worldPos = screenToWorld(screenX, screenY);
       pendingTextX = worldPos.x;
       pendingTextY = worldPos.y;
-      const screenFontSize = strokeWidth * 5 * scale;
+      const screenFontSize = textFontSize * scale;
       textInput.style.fontSize = screenFontSize + 'px';
+      textInput.style.fontFamily = textFontFamily;
       textInput.style.color = strokeColor;
       textInput.style.left = screenX + 'px';
       textInput.style.top = (screenY - screenFontSize * 0.8) + 'px';
@@ -1943,7 +3397,17 @@
       textInput.value = '';
       textInput.style.display = 'block';
       measure.style.fontSize = screenFontSize + 'px';
+      measure.style.fontFamily = textFontFamily;
+      applyTextDecorToInput();
       textInput.focus();
+    }
+
+    // Strip any shadow/highlight styling left on the hidden input.
+    function clearTextDecorFromInput() {
+      textInputEl.style.textShadow = '';
+      textInputEl.style.backgroundColor = 'transparent';
+      textInputEl.style.boxShadow = '';
+      textInputEl.style.borderRadius = '';
     }
 
     async function commitText() {
@@ -1952,6 +3416,7 @@
       const text = textInput.value;
       textInput.style.display = 'none';
       textInput.value = '';
+      clearTextDecorFromInput();
       if (!text.trim()) return;
       const strokeData = {
         type: 'text',
@@ -1959,7 +3424,10 @@
         y: pendingTextY,
         text: text,
         color: strokeColor,
-        fontSize: strokeWidth * 5,
+        fontSize: textFontSize,
+        fontFamily: textFontFamily,
+        shadow: textShadow,
+        highlight: textHighlight,
         dx: 0,
         dy: 0
       };
@@ -1976,6 +3444,7 @@
       const textInput = document.getElementById('text-input');
       textInput.style.display = 'none';
       textInput.value = '';
+      clearTextDecorFromInput();
     }
 
     const textInputEl = document.getElementById('text-input');
@@ -2002,6 +3471,320 @@
       commitText();
     });
 
+    // ===== Comment threads (pinned conversations) =====
+
+    let threads = [];
+    let openThreadId = null;
+    let composerWorld = null;   // world coords for the in-progress new thread
+    let composerAnchor = null;  // { id, dx, dy } when the click landed on an element
+    let currentUserId = null;
+    try {
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        currentUserId = payload.id != null ? String(payload.id) : null;
+      }
+    } catch (_) {}
+
+    const pinLayer = document.getElementById('pin-layer');
+    const pinEls = new Map(); // thread id -> pin button element
+
+    // Bounding box of a drawable element in world space, or null when it has
+    // none (free-form pen strokes are excluded). Returns {minX,minY,maxX,maxY}.
+    function elementBBox(item) {
+      if (!item) return null;
+      if (item.type === 'shape') {
+        return {
+          minX: Math.min(item.x0, item.x1), minY: Math.min(item.y0, item.y1),
+          maxX: Math.max(item.x0, item.x1), maxY: Math.max(item.y0, item.y1)
+        };
+      }
+      if (item.type === 'image') {
+        return { minX: item.x, minY: item.y, maxX: item.x + item.width, maxY: item.y + item.height };
+      }
+      if (item.type === 'emoji') {
+        const h = item.size || EMOJI_SIZE;
+        return { minX: item.x - h / 2, minY: item.y - h / 2, maxX: item.x + h / 2, maxY: item.y + h / 2 };
+      }
+      if (item.type === 'text') {
+        const fs = item.fontSize || 16;
+        const w = Math.max(1, (item.text ? item.text.length : 1)) * fs * 0.6;
+        return { minX: item.x, minY: item.y - fs, maxX: item.x + w, maxY: item.y };
+      }
+      return null;
+    }
+
+    function bboxCenter(b) { return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }; }
+
+    // Topmost (newest) element whose bbox contains world point (wx,wy), or null.
+    function hitTestElement(wx, wy) {
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const item = strokes[i].stroke_data || strokes[i];
+        const b = elementBBox(item);
+        if (b && wx >= b.minX && wx <= b.maxX && wy >= b.minY && wy <= b.maxY) {
+          return { id: strokes[i].id, center: bboxCenter(b) };
+        }
+      }
+      return null;
+    }
+
+    // Current world position of a thread. Anchored threads track their
+    // element's bbox centre + stored offset; if the element is gone (deleted
+    // or cleared), fall back to the thread's stored absolute x/y.
+    function threadWorldPos(t) {
+      if (t.anchor_stroke_id != null && t.anchor_dx != null && t.anchor_dy != null) {
+        const s = strokes.find((s) => s.id === t.anchor_stroke_id);
+        if (s) {
+          const b = elementBBox(s.stroke_data || s);
+          if (b) {
+            const c = bboxCenter(b);
+            return { x: c.x + t.anchor_dx, y: c.y + t.anchor_dy };
+          }
+        }
+      }
+      return { x: t.x, y: t.y };
+    }
+
+    // Reconcile pin DOM with `threads` and reposition every pin from its world
+    // coords. Called from redrawAll(), so it runs on every viewport change.
+    function updatePins() {
+      if (!pinLayer) return;
+      for (const [id, el] of pinEls) {
+        if (!threads.some((t) => t.id === id)) { el.remove(); pinEls.delete(id); }
+      }
+      for (const t of threads) {
+        let el = pinEls.get(t.id);
+        if (!el) {
+          el = document.createElement('button');
+          el.className = 'absolute -translate-x-1/2 -translate-y-full flex items-center justify-center w-7 h-7 rounded-full rounded-bl-none bg-violet-600 text-white text-[11px] font-medium shadow-lg border-2 border-white dark:border-zinc-800 hover:bg-violet-700 transition-colors';
+          el.style.pointerEvents = 'auto';
+          el.title = 'Open comment thread';
+          el.addEventListener('click', (ev) => { ev.stopPropagation(); openThreadPanel(t.id); });
+          pinLayer.appendChild(el);
+          pinEls.set(t.id, el);
+        }
+        const detached = t.anchor_stroke_id == null && (t.anchor_dx != null || t.anchor_dy != null);
+        el.classList.toggle('opacity-60', detached);
+        el.textContent = String((t.replies && t.replies.length) || 1);
+        const wp = threadWorldPos(t);
+        const sp = worldToScreen(wp.x, wp.y);
+        if (sp.x < -40 || sp.y < -40 || sp.x > window.innerWidth + 40 || sp.y > window.innerHeight + 40) {
+          el.style.display = 'none';
+        } else {
+          el.style.display = 'flex';
+          el.style.left = sp.x + 'px';
+          el.style.top = sp.y + 'px';
+        }
+      }
+    }
+
+    function positionPopover(el, sx, sy, display) {
+      el.classList.remove('hidden');
+      el.style.display = display || 'block';
+      const rect = el.getBoundingClientRect();
+      let left = sx + 12;
+      let top = sy + 12;
+      if (left + rect.width > window.innerWidth - 8) left = sx - rect.width - 12;
+      if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
+      el.style.left = Math.max(8, left) + 'px';
+      el.style.top = Math.max(8, top) + 'px';
+    }
+
+    // --- New-thread composer ---
+    function openComposer(screenX, screenY) {
+      closeThreadPanel();
+      const world = screenToWorld(screenX, screenY);
+      composerWorld = world;
+      const hit = hitTestElement(world.x, world.y);
+      const note = document.getElementById('composer-attach-note');
+      if (hit) {
+        composerAnchor = { id: hit.id, dx: world.x - hit.center.x, dy: world.y - hit.center.y };
+        note.classList.remove('hidden');
+      } else {
+        composerAnchor = null;
+        note.classList.add('hidden');
+      }
+      const composer = document.getElementById('comment-composer');
+      document.getElementById('composer-text').value = '';
+      positionPopover(composer, screenX, screenY, 'block');
+      document.getElementById('composer-text').focus();
+    }
+
+    function hideComposer() {
+      const composer = document.getElementById('comment-composer');
+      composer.style.display = 'none';
+      composer.classList.add('hidden');
+      composerWorld = null;
+      composerAnchor = null;
+    }
+
+    async function submitComposer() {
+      const body = document.getElementById('composer-text').value;
+      if (!body.trim() || !composerWorld) { hideComposer(); return; }
+      const payload = { x: composerWorld.x, y: composerWorld.y, body: body.trim() };
+      if (composerAnchor) {
+        payload.anchor_stroke_id = composerAnchor.id;
+        payload.anchor_dx = composerAnchor.dx;
+        payload.anchor_dy = composerAnchor.dy;
+      }
+      hideComposer();
+      try {
+        const res = await fetch('/api/threads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const thread = await res.json();
+          if (!threads.some((t) => t.id === thread.id)) threads.push(thread);
+          updatePins();
+          openThreadPanel(thread.id);
+        } else {
+          showStatus('Comment failed');
+        }
+      } catch (err) {
+        console.error('Create thread failed:', err);
+        showStatus('Comment failed');
+      }
+      setActiveTool('pen');
+    }
+
+    // --- Open-thread panel ---
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function relativeTime(iso) {
+      const then = new Date(iso).getTime();
+      if (!then) return '';
+      const m = Math.floor((Date.now() - then) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
+    }
+
+    function renderThreadReplies(t) {
+      const wrap = document.getElementById('thread-replies');
+      wrap.innerHTML = '';
+      for (const r of (t.replies || [])) {
+        const div = document.createElement('div');
+        div.innerHTML =
+          '<div class="flex items-baseline gap-2 mb-0.5">' +
+            '<span class="text-xs font-medium text-zinc-700 dark:text-zinc-200">' + escapeHtml(r.username) + '</span>' +
+            '<span class="text-[10px] text-zinc-400">' + relativeTime(r.created_at) + '</span>' +
+          '</div>' +
+          '<div class="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">' + escapeHtml(r.body) + '</div>';
+        wrap.appendChild(div);
+      }
+      wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    function openThreadPanel(id) {
+      const t = threads.find((t) => t.id === id);
+      if (!t) return;
+      openThreadId = id;
+      hideComposer();
+      renderThreadReplies(t);
+      const delBtn = document.getElementById('thread-delete');
+      delBtn.classList.toggle('hidden', !(currentUserId != null && String(t.user_id) === currentUserId));
+      document.getElementById('reply-text').value = '';
+      const panel = document.getElementById('thread-panel');
+      const wp = threadWorldPos(t);
+      const sp = worldToScreen(wp.x, wp.y);
+      positionPopover(panel, sp.x, sp.y, 'flex');
+    }
+
+    function closeThreadPanel() {
+      openThreadId = null;
+      const panel = document.getElementById('thread-panel');
+      panel.style.display = 'none';
+      panel.classList.add('hidden');
+    }
+
+    async function submitReply() {
+      if (openThreadId == null) return;
+      const ta = document.getElementById('reply-text');
+      const body = ta.value;
+      if (!body.trim()) return;
+      ta.value = '';
+      try {
+        const res = await fetch('/api/threads/' + openThreadId + '/replies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ body: body.trim() })
+        });
+        if (res.ok) {
+          const reply = await res.json();
+          const t = threads.find((t) => t.id === reply.thread_id);
+          if (t) {
+            t.replies = t.replies || [];
+            if (!t.replies.some((r) => r.id === reply.id)) t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        } else {
+          showStatus('Reply failed');
+        }
+      } catch (err) {
+        console.error('Reply failed:', err);
+        showStatus('Reply failed');
+      }
+    }
+
+    async function deleteOpenThread() {
+      if (openThreadId == null) return;
+      const id = openThreadId;
+      try {
+        await fetch('/api/threads/' + id, { method: 'DELETE', headers: { ...headers } });
+      } catch (err) {
+        console.error('Delete thread failed:', err);
+      }
+      const idx = threads.findIndex((t) => t.id === id);
+      if (idx !== -1) threads.splice(idx, 1);
+      closeThreadPanel();
+      updatePins();
+    }
+
+    document.getElementById('composer-submit').addEventListener('click', submitComposer);
+    document.getElementById('composer-cancel').addEventListener('click', () => { hideComposer(); setActiveTool('pen'); });
+    document.getElementById('composer-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitComposer(); }
+      else if (e.key === 'Escape') { e.preventDefault(); hideComposer(); setActiveTool('pen'); }
+    });
+    document.getElementById('reply-submit').addEventListener('click', submitReply);
+    document.getElementById('thread-close').addEventListener('click', closeThreadPanel);
+    document.getElementById('thread-delete').addEventListener('click', deleteOpenThread);
+    document.getElementById('reply-text').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitReply(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeThreadPanel(); }
+    });
+
+    // Close the open thread panel when clicking outside it (but not on a pin —
+    // pin clicks switch panels via their own handler).
+    document.addEventListener('mousedown', (e) => {
+      const panel = document.getElementById('thread-panel');
+      if (openThreadId != null && !panel.contains(e.target) && !e.target.closest('#pin-layer')) {
+        closeThreadPanel();
+      }
+    });
+
+    async function loadThreads() {
+      try {
+        const res = await fetch('/api/threads', { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        threads = data.threads || [];
+        updatePins();
+      } catch (err) {
+        console.error('Load threads failed:', err);
+      }
+    }
+
     async function saveStroke(strokeData) {
       try {
         const res = await fetch('/api/strokes', {
@@ -2027,12 +3810,15 @@
         strokes = data.strokes || [];
         undoStack = [];
         redoActions = [];
+        updateUndoRedoButtons();
         deselectLayer();
         sortStrokes();
         redrawAll();
         showStatus('Board refreshed');
       } catch (err) {
         console.error('Load failed:', err);
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -2077,8 +3863,43 @@
         strokes = [];
         undoStack = [];
         redoActions = [];
+        updateUndoRedoButtons();
         deselectLayer();
         redrawAll();
+        // Strokes are gone; re-fetch threads so anchors that the server
+        // nulled (ON DELETE SET NULL) are reflected locally.
+        loadThreads();
+      });
+
+      es.addEventListener('thread', (e) => {
+        const data = JSON.parse(e.data);
+        if (!threads.some((t) => t.id === data.id)) {
+          threads.push(data);
+          updatePins();
+        }
+      });
+
+      es.addEventListener('reply', (e) => {
+        const reply = JSON.parse(e.data);
+        const t = threads.find((t) => t.id === reply.thread_id);
+        if (t) {
+          t.replies = t.replies || [];
+          if (!t.replies.some((r) => r.id === reply.id)) {
+            t.replies.push(reply);
+            if (openThreadId === t.id) renderThreadReplies(t);
+            updatePins();
+          }
+        }
+      });
+
+      es.addEventListener('thread-delete', (e) => {
+        const data = JSON.parse(e.data);
+        const idx = threads.findIndex((t) => t.id === data.id);
+        if (idx !== -1) {
+          threads.splice(idx, 1);
+          if (openThreadId === data.id) closeThreadPanel();
+          updatePins();
+        }
       });
 
       es.onerror = () => {
@@ -2139,9 +3960,135 @@
     document.getElementById('export-dark-bg').addEventListener('click', () => { closeExportModal(); exportToPdf('#18181b'); });
     document.getElementById('export-transparent').addEventListener('click', () => { closeExportModal(); exportToPdf(null); });
 
+    // --- Floating toolbar initialization ---
+    const toolbarToggle = document.getElementById('toolbar-toggle');
+    const toolbarMenu = document.getElementById('toolbar-menu');
+
+    function initToolbarPosition() {
+      const saved = localStorage.getItem('whiteboard-toolbar-pos');
+      if (saved) {
+        try {
+          const pos = JSON.parse(saved);
+          // Validate position is within reasonable bounds
+          if (pos.x >= 0 && pos.x <= window.innerWidth && pos.y >= 0 && pos.y <= window.innerHeight) {
+            toolbarPos = pos;
+          } else {
+            // Reset if out of bounds
+            toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+          }
+        } catch (_) {
+          toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+        }
+      } else {
+        toolbarPos = { x: window.innerWidth / 2 - 24, y: 12 };
+      }
+      updateToolbarPosition();
+    }
+
+    function updateToolbarPosition() {
+      toolbarToggle.style.left = toolbarPos.x + 'px';
+      toolbarToggle.style.top = toolbarPos.y + 'px';
+      toolbarMenu.style.left = toolbarPos.x + 'px';
+      toolbarMenu.style.top = (toolbarPos.y + 48) + 'px';
+    }
+
+    function closeAllPopovers() {
+      document.getElementById('shapes-popover').classList.add('hidden');
+      document.getElementById('color-popover').classList.add('hidden');
+      document.getElementById('text-popover').classList.add('hidden');
+      document.getElementById('bg-popover').classList.add('hidden');
+    }
+
+    // Click to toggle menu
+    toolbarToggle.addEventListener('click', (e) => {
+      toolbarMenu.classList.toggle('hidden');
+      e.stopPropagation();
+    });
+
+    // Close menu when a tool is selected
+    document.querySelectorAll('.toolbar-menu .tool-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        toolbarMenu.classList.add('hidden');
+      });
+    });
+
+    // Dragging (with threshold to distinguish from click)
+    toolbarToggle.addEventListener('mousedown', (e) => {
+      toolbarDragStart = { x: e.clientX, y: e.clientY };
+      toolbarDragOffset = { x: toolbarPos.x - e.clientX, y: toolbarPos.y - e.clientY };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!toolbarDragStart) return;
+      const distance = Math.hypot(e.clientX - toolbarDragStart.x, e.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
+      let newX = e.clientX + toolbarDragOffset.x;
+      let newY = e.clientY + toolbarDragOffset.y;
+      // Clamp to viewport (48px button, 20px margin)
+      newX = Math.max(20, Math.min(window.innerWidth - 68, newX));
+      newY = Math.max(20, Math.min(window.innerHeight - 68, newY));
+      toolbarPos = { x: newX, y: newY };
+      updateToolbarPosition();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
+      isToolbarDragging = false;
+      toolbarDragStart = null;
+    });
+
+    // Touch drag support for mobile
+    toolbarToggle.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      toolbarDragStart = { x: t.clientX, y: t.clientY };
+      toolbarDragOffset = { x: toolbarPos.x - t.clientX, y: toolbarPos.y - t.clientY };
+    });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!toolbarDragStart) return;
+      const t = e.touches[0];
+      const distance = Math.hypot(t.clientX - toolbarDragStart.x, t.clientY - toolbarDragStart.y);
+      if (distance < 5) return;
+      if (!isToolbarDragging) {
+        isToolbarDragging = true;
+        toolbarToggle.classList.add('dragging');
+        closeAllPopovers();
+        toolbarMenu.classList.add('hidden');
+      }
+      let newX = t.clientX + toolbarDragOffset.x;
+      let newY = t.clientY + toolbarDragOffset.y;
+      newX = Math.max(20, Math.min(window.innerWidth - 68, newX));
+      newY = Math.max(20, Math.min(window.innerHeight - 68, newY));
+      toolbarPos = { x: newX, y: newY };
+      updateToolbarPosition();
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchend', () => {
+      if (isToolbarDragging) {
+        toolbarToggle.classList.remove('dragging');
+        localStorage.setItem('whiteboard-toolbar-pos', JSON.stringify(toolbarPos));
+      }
+      isToolbarDragging = false;
+      toolbarDragStart = null;
+    });
+
     window.addEventListener('resize', resize);
+    updateUndoRedoButtons();
     resize();
+    setLoading(true);
+    initToolbarPosition();
     loadStrokes();
+    loadThreads();
     connectSSE();
   </script>
 </body>
