@@ -9,6 +9,21 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const JWT_SECRET = process.env.JWT_SECRET;
 const IS_STAGING = process.env.USERNODE_ENV === 'staging';
 
+// --- Brush-shape catalog (server is the source of truth for tiering/price) ---
+const ALL_BRUSHES = [
+  { id: 'line', label: 'Line', tier: 'free' },
+  { id: 'rect', label: 'Square', tier: 'free' },
+  { id: 'circle', label: 'Oval', tier: 'free' },
+  { id: 'triangle', label: 'Triangle', tier: 'free' },
+  { id: 'heart', label: 'Heart', tier: 'premium' },
+  { id: 'prism', label: 'Prism', tier: 'premium' }
+];
+const PREMIUM_BRUSHES = ALL_BRUSHES.filter((b) => b.tier === 'premium').map((b) => b.id);
+// One-time price (smallest on-chain unit) to unlock the whole premium set, and
+// the treasury address that receives it. Payee is a required+private secret.
+const PREMIUM_BRUSH_PRICE = parseInt(process.env.PREMIUM_BRUSH_PRICE || '500', 10);
+const PREMIUM_BRUSH_PAYEE_PUBKEY = process.env.PREMIUM_BRUSH_PAYEE_PUBKEY || '';
+
 const sseClients = new Set();
 
 function broadcast(event, data) {
@@ -279,6 +294,73 @@ app.delete('/api/threads/:id', async (req, res) => {
   }
 });
 
+// --- Premium brushes ---
+
+// Set of premium brush ids this user has unlocked.
+async function unlockedBrushIds(userId) {
+  const { rows } = await pool.query(
+    'SELECT brush_id FROM brush_unlocks WHERE user_id = $1',
+    [userId]
+  );
+  return rows.map((r) => r.brush_id);
+}
+
+// Catalog + this user's unlock state + purchase config. Free brushes are always
+// available; the client treats anything not premium as unlocked.
+app.get('/api/brushes', async (req, res) => {
+  try {
+    const unlocked = await unlockedBrushIds(req.user.id);
+    res.json({
+      brushes: ALL_BRUSHES.map((b) => ({ id: b.id, label: b.label, tier: b.tier })),
+      premium: PREMIUM_BRUSHES,
+      unlocked,
+      price: PREMIUM_BRUSH_PRICE,
+      payee: PREMIUM_BRUSH_PAYEE_PUBKEY
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Convenience endpoint: just the unlocked set for the current user.
+app.get('/api/brushes/unlocked', async (req, res) => {
+  try {
+    const unlocked = await unlockedBrushIds(req.user.id);
+    res.json({ unlocked });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Record a one-time purchase: a single confirmed transaction unlocks the whole
+// premium set. Idempotent via UNIQUE(user_id, brush_id) + ON CONFLICT, so
+// re-posting (already-owned, double-click) is a safe no-op.
+app.post('/api/brushes/purchase', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { tx_id } = req.body;
+    if (typeof tx_id !== 'string' || !tx_id.trim()) {
+      return res.status(400).json({ error: 'tx_id is required' });
+    }
+    await client.query('BEGIN');
+    for (const brushId of PREMIUM_BRUSHES) {
+      await client.query(
+        `INSERT INTO brush_unlocks (user_id, username, brush_id, tx_id, amount)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, brush_id) DO NOTHING`,
+        [req.user.id, req.user.username, brushId, tx_id.trim(), PREMIUM_BRUSH_PRICE]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, unlocked: PREMIUM_BRUSHES });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => {
@@ -338,6 +420,35 @@ async function start() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  // Per-user record of unlocked premium brushes. Purchase/financial data tied
+  // to identifiable users, so it's private: staging gets schema-only, no rows.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS brush_unlocks (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      brush_id TEXT NOT NULL,
+      tx_id TEXT,
+      amount INTEGER,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (user_id, brush_id)
+    )
+  `);
+  await pool.query("COMMENT ON TABLE brush_unlocks IS 'staging:private'");
+
+  // Private table copies schema-only to staging — seed a test user with the
+  // premium set unlocked so the unlocked UI is exercisable without a payment.
+  if (IS_STAGING) {
+    for (const brushId of PREMIUM_BRUSHES) {
+      await pool.query(
+        `INSERT INTO brush_unlocks (user_id, username, brush_id, tx_id, amount)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, brush_id) DO NOTHING`,
+        ['staging-user', 'staging-user', brushId, 'staging-seed', PREMIUM_BRUSH_PRICE]
+      );
+    }
+  }
+
   app.listen(port, () => console.log(`Listening on :${port}`));
 }
 
