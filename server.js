@@ -339,6 +339,136 @@ app.post('/api/brushes/purchase', async (req, res) => {
   }
 });
 
+// --- Marketplace listings ---
+
+// All active listings with purchase state for the requesting user.
+// Never returns image_data in the list — only thumbnail.
+app.get('/api/listings', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT l.id, l.seller_id, l.seller_username, l.payee_pubkey, l.title, l.price,
+              l.thumbnail, l.created_at,
+              (p.buyer_id IS NOT NULL) AS purchased
+       FROM board_listings l
+       LEFT JOIN listing_purchases p ON p.listing_id = l.id AND p.buyer_id = $1
+       WHERE l.status = 'active'
+       ORDER BY l.created_at DESC`,
+      [req.user.id]
+    );
+    res.json({ listings: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create a new listing. Reads payee_pubkey from the seller's own JWT.
+app.post('/api/listings', async (req, res) => {
+  try {
+    const { title, price, thumbnail, image_data } = req.body;
+    if (typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Title is required.' });
+    }
+    if (title.trim().length > 80) {
+      return res.status(400).json({ error: 'Title must be 80 characters or fewer.' });
+    }
+    if (!Number.isInteger(price) || price < 1) {
+      return res.status(400).json({ error: 'Price must be a positive integer.' });
+    }
+    if (typeof thumbnail !== 'string' || !thumbnail.startsWith('data:')) {
+      return res.status(400).json({ error: 'Thumbnail is required.' });
+    }
+    if (typeof image_data !== 'string' || !image_data.startsWith('data:')) {
+      return res.status(400).json({ error: 'Image data is required.' });
+    }
+    if (image_data.length > 2_000_000) {
+      return res.status(400).json({ error: 'Image is too large (max 2 MB).' });
+    }
+    const payee_pubkey = req.user.usernode_pubkey || '';
+    if (!payee_pubkey) {
+      return res.status(400).json({ error: 'You must link a Usernode wallet to sell.' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO board_listings (seller_id, seller_username, payee_pubkey, title, price, thumbnail, image_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [req.user.id, req.user.username, payee_pubkey, title.trim(), price, thumbnail, image_data]
+    );
+    res.json({ ok: true, id: rows[0].id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Seller removes their own listing by setting status to 'removed'.
+app.delete('/api/listings/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE board_listings SET status = 'removed' WHERE id = $1 AND seller_id = $2`,
+      [req.params.id, req.user.id]
+    );
+    res.json({ ok: true, deleted: result.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Record a purchase and return the full image_data. Idempotent on re-post.
+app.post('/api/listings/:id/purchase', async (req, res) => {
+  try {
+    const { tx_id } = req.body;
+    if (typeof tx_id !== 'string' || !tx_id.trim()) {
+      return res.status(400).json({ error: 'tx_id is required.' });
+    }
+    const listingQ = await pool.query(
+      `SELECT id, seller_id, price, image_data FROM board_listings WHERE id = $1 AND status = 'active'`,
+      [req.params.id]
+    );
+    if (listingQ.rowCount === 0) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+    const listing = listingQ.rows[0];
+    if (listing.seller_id === req.user.id) {
+      return res.status(400).json({ error: 'You cannot purchase your own listing.' });
+    }
+    await pool.query(
+      `INSERT INTO listing_purchases (listing_id, buyer_id, buyer_username, tx_id, amount)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (listing_id, buyer_id) DO NOTHING`,
+      [listing.id, req.user.id, req.user.username, tx_id.trim(), listing.price]
+    );
+    res.json({ ok: true, image_data: listing.image_data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Re-fetch image_data for a listing the requester has already purchased (or owns).
+app.get('/api/listings/:id/image', async (req, res) => {
+  try {
+    const listingQ = await pool.query(
+      `SELECT id, seller_id, image_data FROM board_listings WHERE id = $1`,
+      [req.params.id]
+    );
+    if (listingQ.rowCount === 0) {
+      return res.status(404).json({ error: 'Listing not found.' });
+    }
+    const listing = listingQ.rows[0];
+    if (listing.seller_id === req.user.id) {
+      return res.json({ image_data: listing.image_data });
+    }
+    const purchaseQ = await pool.query(
+      `SELECT id FROM listing_purchases WHERE listing_id = $1 AND buyer_id = $2`,
+      [listing.id, req.user.id]
+    );
+    if (purchaseQ.rowCount === 0) {
+      return res.status(403).json({ error: 'You have not purchased this listing.' });
+    }
+    res.json({ image_data: listing.image_data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => {
@@ -414,6 +544,35 @@ async function start() {
   `);
   await pool.query("COMMENT ON TABLE brush_unlocks IS 'staging:private'");
 
+  // Marketplace: snapshots listed for sale and purchase records.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS board_listings (
+      id SERIAL PRIMARY KEY,
+      seller_id TEXT NOT NULL,
+      seller_username TEXT NOT NULL,
+      payee_pubkey TEXT NOT NULL,
+      title TEXT NOT NULL,
+      price INTEGER NOT NULL,
+      thumbnail TEXT NOT NULL,
+      image_data TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS listing_purchases (
+      id SERIAL PRIMARY KEY,
+      listing_id INTEGER NOT NULL REFERENCES board_listings(id),
+      buyer_id TEXT NOT NULL,
+      buyer_username TEXT NOT NULL,
+      tx_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (listing_id, buyer_id)
+    )
+  `);
+  await pool.query("COMMENT ON TABLE listing_purchases IS 'staging:private'");
+
   // Private table copies schema-only to staging — seed a test user with the
   // premium set unlocked so the unlocked UI is exercisable without a payment.
   if (IS_STAGING) {
@@ -425,6 +584,28 @@ async function start() {
         ['staging-user', 'staging-user', brushId, 'staging-seed', PREMIUM_BRUSH_PRICE]
       );
     }
+
+    // Seed two demo marketplace listings so the marketplace panel is testable.
+    // Use a minimal 1×1 white JPEG as the placeholder image.
+    const STAGING_IMG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AJQAB/9k=';
+    await pool.query(
+      `INSERT INTO board_listings (id, seller_id, seller_username, payee_pubkey, title, price, thumbnail, image_data)
+       VALUES (900001, 'staging-seller', 'staging-seller', 'ut1stagingpayee000000000000000000000000', 'Demo Board — Sunrise', 100, $1, $1)
+       ON CONFLICT (id) DO NOTHING`,
+      [STAGING_IMG]
+    );
+    await pool.query(
+      `INSERT INTO board_listings (id, seller_id, seller_username, payee_pubkey, title, price, thumbnail, image_data)
+       VALUES (900002, 'staging-user', 'staging-user', 'ut1stagingpayee000000000000000000000000', 'Demo Board — Abstract', 250, $1, $1)
+       ON CONFLICT (id) DO NOTHING`,
+      [STAGING_IMG]
+    );
+    // staging-user has already purchased listing 900001 (exercises the Place/Download UI)
+    await pool.query(
+      `INSERT INTO listing_purchases (listing_id, buyer_id, buyer_username, tx_id, amount)
+       VALUES (900001, 'staging-user', 'staging-user', 'staging-seed', 100)
+       ON CONFLICT (listing_id, buyer_id) DO NOTHING`
+    );
   }
 
   app.listen(port, () => console.log(`Listening on :${port}`));
