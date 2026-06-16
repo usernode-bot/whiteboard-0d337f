@@ -476,18 +476,22 @@
       </button>
       <!-- Eraser tool with popover -->
       <div class="relative">
-        <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+        <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg relative" title="Eraser">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+          <span class="absolute bottom-0 right-0 text-xs leading-none">▼</span>
         </button>
         <div id="eraser-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex flex-col gap-1">
-          <button data-eraser-mode="pixel" class="eraser-mode-opt tool-btn w-24 h-9 rounded-lg flex items-center justify-center text-sm" title="Pixel Eraser">
-            Pixel
+          <button data-eraser-mode="pixel" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Pixel Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">P</span>
           </button>
-          <button data-eraser-mode="stroke" class="eraser-mode-opt tool-btn w-24 h-9 rounded-lg flex items-center justify-center text-sm" title="Stroke Eraser">
-            Stroke
+          <button data-eraser-mode="stroke" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Stroke Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">S</span>
           </button>
-          <button data-eraser-mode="layer" class="eraser-mode-opt tool-btn w-24 h-9 rounded-lg flex items-center justify-center text-sm" title="Layer Eraser">
-            Layer
+          <button data-eraser-mode="layer" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Layer Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">L</span>
           </button>
         </div>
       </div>
