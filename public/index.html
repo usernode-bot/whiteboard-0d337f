@@ -162,7 +162,7 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
     body { font-family: var(--font-ui); color: var(--text-primary); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; margin-top: 48px; }
+    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; }
 
     /* Static dot-grid texture on the page background layer (behind the
        transparent canvas) so it never touches stroke compositing or PDF
@@ -403,20 +403,17 @@
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
-  <div id="balance-header" class="fixed top-0 left-0 right-0 h-12 bg-white dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-700 flex items-center justify-center gap-8 z-[45]">
-    <div class="flex items-center gap-2 text-sm font-medium">
-      <span>❄️</span>
-      <span>=</span>
-      <span id="balance-snowflakes">0</span>
-      <span class="text-xs text-zinc-500 dark:text-zinc-400">SF</span>
-    </div>
-    <div class="flex items-center gap-2 text-sm font-medium">
-      <span>🪙</span>
-      <span>=</span>
-      <span id="balance-tokens">0</span>
-      <span class="text-xs text-zinc-500 dark:text-zinc-400">TKN</span>
-    </div>
+  <!-- Compact balance header in top-left -->
+  <div id="balance-header" class="fixed top-3 left-3 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 z-[45] text-xs font-medium whitespace-nowrap">
+    <span>❄️</span><span id="balance-snowflakes" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">SF</span>
+    <span class="mx-2 text-zinc-300 dark:text-zinc-600">|</span>
+    <span>🪙</span><span id="balance-tokens" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">TKN</span>
   </div>
+
+  <!-- Rain launch button in top-right -->
+  <button id="btn-rain-launch" class="fixed top-3 right-3 w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors z-[45]" title="Launch snowflake & bomb rain">
+    <span>🌨️</span>
+  </button>
 
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
@@ -3688,6 +3685,23 @@
       });
     }
 
+    // Rain launch button handler
+    function initRainButton() {
+      const btn = document.getElementById('btn-rain-launch');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        // Trigger the snowflake and bomb rain animation.
+        // This function is called when the user clicks the rain button.
+        // If a rain animation system exists, launch it here.
+        // For now, this is a placeholder that can be connected to the animation.
+        if (typeof startRain === 'function') {
+          startRain();
+        } else {
+          console.log('Rain animation not yet implemented. Click the button to launch snowflakes and bombs!');
+        }
+      });
+    }
+
     // --- Text tool helpers ---
 
     function openTextInput(screenX, screenY) {
@@ -4422,6 +4436,7 @@
     resize();
     setLoading(true);
     initToolbarPosition();
+    initRainButton();
     loadStrokes();
     loadThreads();
     loadBalance();
