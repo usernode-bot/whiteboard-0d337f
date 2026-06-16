@@ -205,6 +205,17 @@
     .tool-btn svg { width: 19px; height: 19px; }
     :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
+    /* Core-tool buttons that show a short text label beside the icon
+       (brush, quick colours, eraser, Clear All — Issue #57). They widen
+       to fit the label instead of being fixed squares; the label inherits
+       the button's text colour so it stays legible in light/dark + active. */
+    .labeled-tool { width: auto !important; height: 40px; padding: 0 12px; gap: 7px; }
+    .labeled-tool .tool-label { font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+    .quick-color-btn .quick-dot {
+      width: 16px; height: 16px; border-radius: 9999px;
+      border: 2px solid var(--swatch-border); flex-shrink: 0;
+    }
+
     /* selected swatch indicator */
     .swatch-selected { box-shadow: 0 0 0 2px var(--surface-popover), 0 0 0 3px var(--accent) !important; }
 
@@ -395,6 +406,10 @@
       }
       .toolbar-menu-content { padding: 6px 8px !important; gap: 4px !important; }
       .tool-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; }
+      /* Labeled core tools keep their text and grow to fit it, but match
+         the 36px touch height of the other mobile buttons. */
+      .labeled-tool { width: auto !important; height: 36px !important; padding: 0 10px !important; }
+      .labeled-tool .tool-label { font-size: 12px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
       /* Vertical separators look out of place once buttons wrap — hide them. */
@@ -480,14 +495,16 @@
   <div id="toolbar-menu" class="toolbar-menu fixed hidden">
     <div class="toolbar-menu-content">
       <!-- Drawing tools -->
-      <button id="btn-pen" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Pen">
+      <button id="btn-pen" class="tool-btn labeled-tool active rounded-xl flex items-center justify-center text-lg" title="Brush">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+        <span class="tool-label">Brush</span>
       </button>
       <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
       </button>
-      <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Eraser">
+      <button id="btn-eraser" class="tool-btn labeled-tool rounded-xl flex items-center justify-center text-lg" title="Eraser">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+        <span class="tool-label">Eraser</span>
       </button>
       <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
@@ -564,6 +581,12 @@
         <span id="color-dot" class="w-5 h-5 rounded-full border-2 border-white/60 shadow-sm"></span>
       </button>
 
+      <!-- Quick colours (Issue #57): one-tap labeled Black / Red / Blue /
+           Green pills, populated in JS. Buttons carry .tool-btn for mobile
+           touch sizing but .quick-color-btn excludes them from the panel
+           auto-close handler. -->
+      <div id="quick-colors" class="flex items-center gap-1"></div>
+
       <div class="flex items-center gap-1">
         <span class="desktop-label text-xs text-zinc-500 dark:text-zinc-400">Size</span>
         <input id="stroke-size" type="range" min="1" max="40" value="3" class="w-20">
@@ -583,8 +606,9 @@
       <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
 
       <!-- Utility buttons -->
-      <button id="btn-clear" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Clear">
+      <button id="btn-clear" class="tool-btn labeled-tool rounded-xl flex items-center justify-center text-lg text-red-500" title="Clear All">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        <span class="tool-label">Clear All</span>
       </button>
 
       <button id="btn-history" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="History — jump to a point">
@@ -621,6 +645,10 @@
       <!-- Export and theme -->
       <button id="btn-export" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Export PDF">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+
+      <button id="btn-marketplace" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Marketplace">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
       </button>
 
       <div class="w-px h-8 bg-zinc-300 dark:bg-zinc-600 mx-1"></div>
@@ -754,6 +782,45 @@
     </div>
   </div>
 
+  <!-- Sell snapshot modal -->
+  <div id="sell-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 w-80 max-w-[92vw] mx-4">
+      <p class="text-zinc-800 dark:text-zinc-100 text-base font-semibold mb-3">Sell a board snapshot</p>
+      <img id="sell-preview-img" alt="Board preview" class="w-full rounded-xl mb-4 object-contain bg-zinc-100 dark:bg-zinc-700" style="height:140px;">
+      <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Title</label>
+      <input id="sell-title" type="text" maxlength="80" placeholder="e.g. Abstract Sketch #1" class="w-full mb-3 px-3 py-2 text-sm rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 outline-none focus:border-violet-500">
+      <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Price (tokens)</label>
+      <input id="sell-price" type="number" min="1" step="1" placeholder="e.g. 100" class="w-full mb-4 px-3 py-2 text-sm rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 outline-none focus:border-violet-500">
+      <p id="sell-status" class="text-xs text-zinc-500 dark:text-zinc-400 mb-3 min-h-[1rem]"></p>
+      <div class="flex gap-3 justify-end">
+        <button id="sell-cancel" class="px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+        <button id="sell-submit" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+          <span id="sell-submit-spinner" class="spinner hidden"></span>
+          List for Sale
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buy confirmation modal -->
+  <div id="buy-modal" class="fixed inset-0 z-[100] hidden items-center justify-center" style="background:rgba(0,0,0,0.4)">
+    <div class="bg-white dark:bg-zinc-800 rounded-2xl shadow-xl p-6 w-80 max-w-[92vw] mx-4 text-center">
+      <p class="text-zinc-800 dark:text-zinc-100 text-base font-semibold mb-3">Confirm Purchase</p>
+      <img id="buy-modal-thumb" alt="" class="w-full rounded-xl mb-3 object-contain bg-zinc-100 dark:bg-zinc-700" style="height:120px;">
+      <p id="buy-modal-title" class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 mb-1 truncate"></p>
+      <p id="buy-modal-seller" class="text-xs text-zinc-500 dark:text-zinc-400 mb-1"></p>
+      <p id="buy-modal-price" class="text-sm font-semibold mb-3" style="color: var(--accent);"></p>
+      <p id="buy-modal-status" class="text-xs text-zinc-500 dark:text-zinc-400 mb-3 min-h-[1rem]"></p>
+      <div class="flex gap-3 justify-center">
+        <button id="buy-cancel" class="px-4 py-2 rounded-xl border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">Cancel</button>
+        <button id="buy-confirm-btn" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+          <span id="buy-confirm-spinner" class="spinner hidden"></span>
+          Confirm Purchase
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div id="layers-panel" class="hidden fixed top-20 right-3 bottom-4 w-64 max-w-[88vw] bg-white/95 dark:bg-zinc-800/95 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-lg z-50 flex flex-col">
     <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
       <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200">Layers</span>
@@ -762,6 +829,27 @@
       </button>
     </div>
     <div id="layers-list" class="flex-1 overflow-y-auto p-2 flex flex-col gap-1"></div>
+  </div>
+
+  <!-- Marketplace panel -->
+  <div id="marketplace-panel" class="hidden fixed top-20 right-3 bottom-4 w-72 max-w-[92vw] bg-white/95 dark:bg-zinc-800/95 border border-zinc-300 dark:border-zinc-700 rounded-2xl shadow-lg z-50 flex flex-col">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700 flex-shrink-0">
+      <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200">Marketplace</span>
+      <div class="flex items-center gap-1">
+        <button id="marketplace-refresh" class="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700" title="Refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+        <button id="marketplace-close" class="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="px-3 py-2 border-b border-zinc-200 dark:border-zinc-700 flex-shrink-0">
+      <button id="marketplace-sell-btn" class="w-full py-2 rounded-xl text-xs font-semibold text-white" style="background: var(--accent);">
+        + Sell Snapshot
+      </button>
+    </div>
+    <div id="marketplace-grid" class="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2 content-start"></div>
   </div>
 
   <script>
@@ -874,6 +962,7 @@
         document.getElementById('color-custom-stroke').value = hex;
       }
       syncSelectedSwatch('color-swatches', hex);
+      syncSelectedSwatch('quick-colors', hex);
     }
 
     // Sync color dot with initial theme
@@ -1145,6 +1234,16 @@
       }
       hasInitialResize = true;
       redrawAll();
+      updateToolbarFades();
+    }
+
+    function updateToolbarFades() {
+      const el = document.getElementById('toolbar-scroll');
+      if (!el) return;
+      const atLeft = el.scrollLeft <= 0;
+      const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2;
+      document.getElementById('toolbar-scroll-left').style.opacity = atLeft ? '0' : '1';
+      document.getElementById('toolbar-scroll-right').style.opacity = atRight ? '0' : '1';
     }
 
     // Stable z-order: explicit z_index, falling back to id for legacy rows.
@@ -1554,6 +1653,7 @@
       document.getElementById('layer-actions').classList.remove('hidden');
       document.getElementById('layer-actions').classList.add('flex');
       redrawAll();
+      updateToolbarFades();
     }
 
     function deselectLayer() {
@@ -1563,6 +1663,7 @@
       la.classList.add('hidden');
       la.classList.remove('flex');
       redrawAll();
+      updateToolbarFades();
     }
 
     function findLayer(id) {
@@ -2687,6 +2788,18 @@
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('gesturechange', (e) => e.preventDefault());
 
+    // --- Toolbar scroll arrow handlers ---
+
+    (function() {
+      const scrollEl = document.getElementById('toolbar-scroll');
+      document.getElementById('toolbar-scroll-left').addEventListener('click', () => {
+        scrollEl.scrollBy({ left: -200, behavior: 'smooth' });
+      });
+      document.getElementById('toolbar-scroll-right').addEventListener('click', () => {
+        scrollEl.scrollBy({ left: 200, behavior: 'smooth' });
+      });
+    })();
+
     // --- Tool button handlers ---
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
@@ -3018,6 +3131,42 @@
         swatchWrap.appendChild(sw);
       });
       syncSelectedSwatch('color-swatches', strokeColor);
+
+      // Quick-access colour row (Issue #57): one-tap Black / Red / Blue /
+      // Green labeled pills. Reuses setStrokeColor + the .swatch-selected
+      // highlight, and re-arms the pen when erasing/rainbow so the colour
+      // applies at once. Buttons carry .tool-btn for mobile touch sizing
+      // but .quick-color-btn excludes them from the panel auto-close.
+      const QUICK_COLORS = [
+        { name: 'Black', hex: '#000000' },
+        { name: 'Red',   hex: '#dc2626' },
+        { name: 'Blue',  hex: '#2563eb' },
+        { name: 'Green', hex: '#16a34a' }
+      ];
+      const quickWrap = document.getElementById('quick-colors');
+      if (quickWrap) {
+        QUICK_COLORS.forEach(({ name, hex }) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.title = name;
+          b.dataset.swatch = hex;
+          b.className = 'tool-btn quick-color-btn labeled-tool rounded-xl flex items-center justify-center';
+          const dot = document.createElement('span');
+          dot.className = 'quick-dot';
+          dot.style.backgroundColor = hex;
+          const label = document.createElement('span');
+          label.className = 'tool-label';
+          label.textContent = name;
+          b.appendChild(dot);
+          b.appendChild(label);
+          b.addEventListener('click', () => {
+            setStrokeColor(hex);
+            if (tool === 'eraser' || tool === 'rainbow') setActiveTool('pen');
+          });
+          quickWrap.appendChild(b);
+        });
+        syncSelectedSwatch('quick-colors', strokeColor);
+      }
 
       const btnColor = document.getElementById('btn-color');
       const colorPopover = document.getElementById('color-popover');
@@ -3430,7 +3579,7 @@
 
     document.getElementById('btn-clear').addEventListener('click', async () => {
       if (strokes.length === 0) return;
-      const confirmed = await showConfirm('Clear the entire shared whiteboard?');
+      const confirmed = await showConfirm('Clear all drawings from the shared whiteboard?');
       if (!confirmed) return;
       try {
         await fetch('/api/strokes', {
@@ -4448,8 +4597,9 @@
       e.stopPropagation();
     });
 
-    // Close menu when a tool is selected
-    document.querySelectorAll('.toolbar-menu .tool-btn').forEach(btn => {
+    // Close menu when a tool is selected. Quick-colour buttons are excluded
+    // so picking a colour keeps the panel open for continued work.
+    document.querySelectorAll('.toolbar-menu .tool-btn:not(.quick-color-btn)').forEach(btn => {
       btn.addEventListener('click', () => {
         toolbarMenu.classList.add('hidden');
       });
@@ -4535,6 +4685,448 @@
     loadThreads();
     loadBalance();
     connectSSE();
+
+    // --- Marketplace ---
+
+    // Decode the JWT payload (base64url, not secret) to get the current user id
+    // so we can identify which listings belong to the viewer.
+    function decodeJwtPayload(tok) {
+      try {
+        const parts = tok.split('.');
+        if (parts.length < 2) return null;
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+        return JSON.parse(atob(padded));
+      } catch (_) { return null; }
+    }
+    const currentUserClaims = decodeJwtPayload(token);
+    const currentUserId = currentUserClaims ? currentUserClaims.id : null;
+
+    // In-memory cache of image_data URLs for listings the user has purchased
+    // this session (avoids re-fetching on re-render).
+    const purchasedImages = new Map();
+
+    let marketplacePanelOpen = false;
+    let marketplaceListings = [];
+    let marketplaceLoading = false;
+    let sellInFlight = false;
+    let buyInFlight = false;
+    let buyTargetListing = null;
+
+    // Capture the current canvas as a JPEG data URL, scaled to maxW wide.
+    function captureSnapshot(maxW, quality) {
+      redrawAll(true); // no selection overlay in the snapshot
+      let w = canvas.width, h = canvas.height;
+      if (w > maxW) {
+        const r = maxW / w;
+        w = Math.round(w * r);
+        h = Math.round(h * r);
+      }
+      const off = document.createElement('canvas');
+      off.width = w;
+      off.height = h;
+      const offCtx = off.getContext('2d');
+      offCtx.fillStyle = '#ffffff';
+      offCtx.fillRect(0, 0, w, h);
+      offCtx.drawImage(canvas, 0, 0, w, h);
+      const dataUrl = off.toDataURL('image/jpeg', quality);
+      redrawAll(); // restore selection overlay
+      return dataUrl;
+    }
+
+    function openMarketplacePanel() {
+      marketplacePanelOpen = true;
+      document.getElementById('marketplace-panel').classList.remove('hidden');
+      loadListings();
+    }
+
+    function closeMarketplacePanel() {
+      marketplacePanelOpen = false;
+      document.getElementById('marketplace-panel').classList.add('hidden');
+    }
+
+    async function loadListings() {
+      if (marketplaceLoading) return;
+      marketplaceLoading = true;
+      setMarketplaceGridState('loading');
+      try {
+        const res = await fetch('/api/listings', { headers });
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        marketplaceListings = data.listings || [];
+        renderListings();
+      } catch (_) {
+        setMarketplaceGridState('error');
+      } finally {
+        marketplaceLoading = false;
+      }
+    }
+
+    function setMarketplaceGridState(state) {
+      const grid = document.getElementById('marketplace-grid');
+      grid.className = 'flex-1 overflow-y-auto p-3 content-start';
+      if (state === 'loading') {
+        grid.innerHTML = '<div class="flex justify-center py-10"><span class="spinner"></span></div>';
+      } else if (state === 'error') {
+        grid.innerHTML = '<p class="text-center text-xs py-8" style="color:var(--text-muted)">Failed to load. <button id="mp-retry" class="underline">Retry</button></p>';
+        const btn = grid.querySelector('#mp-retry');
+        if (btn) btn.addEventListener('click', loadListings);
+      } else if (state === 'empty') {
+        grid.innerHTML = '<p class="text-center text-xs py-8" style="color:var(--text-muted)">No listings yet — sell a snapshot to start.</p>';
+      }
+    }
+
+    function renderListings() {
+      const grid = document.getElementById('marketplace-grid');
+      if (!marketplaceListings.length) {
+        setMarketplaceGridState('empty');
+        return;
+      }
+      grid.className = 'flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2 content-start';
+      grid.innerHTML = '';
+      for (const listing of marketplaceListings) {
+        grid.appendChild(makeListingCard(listing));
+      }
+    }
+
+    function makeListingCard(listing) {
+      const card = document.createElement('div');
+      card.className = 'rounded-xl border overflow-hidden flex flex-col';
+      card.style.cssText = 'border-color:var(--border-hairline); background:var(--surface-popover);';
+
+      const img = document.createElement('img');
+      img.src = listing.thumbnail;
+      img.alt = listing.title;
+      img.style.cssText = 'width:100%; height:72px; object-fit:cover; display:block;';
+
+      const body = document.createElement('div');
+      body.style.cssText = 'padding:6px 8px 8px; display:flex; flex-direction:column; gap:2px; flex:1;';
+
+      const titleEl = document.createElement('p');
+      titleEl.style.cssText = 'font-size:11px; font-weight:600; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-primary);';
+      titleEl.textContent = listing.title;
+
+      const sellerEl = document.createElement('p');
+      sellerEl.style.cssText = 'font-size:10px; margin:0; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+      sellerEl.textContent = listing.seller_username;
+
+      const priceEl = document.createElement('p');
+      priceEl.style.cssText = 'font-size:11px; font-weight:600; margin:0 0 4px; color:var(--accent);';
+      priceEl.textContent = listing.price + ' tokens';
+
+      body.appendChild(titleEl);
+      body.appendChild(sellerEl);
+      body.appendChild(priceEl);
+
+      const isSeller = listing.seller_id === currentUserId;
+      const hasPurchased = listing.purchased || purchasedImages.has(listing.id);
+
+      if (isSeller) {
+        const btn = makeCardBtn('Remove', 'danger');
+        btn.addEventListener('click', () => removeListing(listing.id));
+        body.appendChild(btn);
+      } else if (hasPurchased) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; gap:4px;';
+        const placeBtn = makeCardBtn('Place', 'accent');
+        placeBtn.style.flex = '1';
+        placeBtn.addEventListener('click', async () => {
+          const imgData = purchasedImages.get(listing.id);
+          if (imgData) {
+            placeImageOnBoard(imgData);
+          } else {
+            placeBtn.textContent = '…';
+            placeBtn.disabled = true;
+            try {
+              const d = await reFetchImage(listing.id);
+              placeImageOnBoard(d);
+              renderListings();
+            } catch (_) { showStatus('Failed to load image'); }
+            finally { placeBtn.textContent = 'Place'; placeBtn.disabled = false; }
+          }
+        });
+        const dlBtn = makeCardBtn('Save', 'muted');
+        dlBtn.style.flex = '1';
+        dlBtn.addEventListener('click', async () => {
+          const imgData = purchasedImages.get(listing.id);
+          if (imgData) {
+            downloadImage(imgData, listing.id);
+          } else {
+            dlBtn.textContent = '…';
+            dlBtn.disabled = true;
+            try {
+              const d = await reFetchImage(listing.id);
+              downloadImage(d, listing.id);
+              renderListings();
+            } catch (_) { showStatus('Failed to load image'); }
+            finally { dlBtn.textContent = 'Save'; dlBtn.disabled = false; }
+          }
+        });
+        row.appendChild(placeBtn);
+        row.appendChild(dlBtn);
+        body.appendChild(row);
+      } else {
+        const btn = makeCardBtn('Buy', 'accent');
+        btn.addEventListener('click', () => openBuyModal(listing));
+        body.appendChild(btn);
+      }
+
+      card.appendChild(img);
+      card.appendChild(body);
+      return card;
+    }
+
+    function makeCardBtn(label, style) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.style.cssText = 'width:100%; padding:4px 0; font-size:11px; font-weight:500; border-radius:8px; cursor:pointer; transition:opacity 0.15s;';
+      if (style === 'accent') {
+        btn.style.background = 'var(--accent)';
+        btn.style.color = 'white';
+        btn.style.border = 'none';
+      } else if (style === 'danger') {
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--danger)';
+        btn.style.border = '1px solid var(--border-hairline)';
+      } else {
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.border = '1px solid var(--border-hairline)';
+      }
+      return btn;
+    }
+
+    async function reFetchImage(listingId) {
+      const res = await fetch('/api/listings/' + listingId + '/image', { headers });
+      if (!res.ok) throw new Error('not authorized');
+      const data = await res.json();
+      purchasedImages.set(listingId, data.image_data);
+      return data.image_data;
+    }
+
+    function placeImageOnBoard(src) {
+      const img = new Image();
+      img.onload = () => {
+        const worldW = img.naturalWidth / scale;
+        const worldH = img.naturalHeight / scale;
+        const center = screenToWorld(canvas.width / 2, canvas.height / 2);
+        const item = { type: 'image', src, x: center.x - worldW / 2, y: center.y - worldH / 2, w: worldW, h: worldH, dx: 0, dy: 0 };
+        saveStroke(item).then((saved) => {
+          if (saved) {
+            const layer = { id: saved.id, stroke_data: item, z_index: saved.z_index };
+            strokes.push(layer);
+            recordAction({ type: 'add', id: saved.id, data: item });
+            sortStrokes();
+            setActiveTool('select');
+            selectLayer(layer);
+            closeMarketplacePanel();
+            showStatus('Image placed on board');
+          }
+        });
+      };
+      img.src = src;
+    }
+
+    function downloadImage(dataUrl, listingId) {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'whiteboard-listing-' + listingId + '.jpg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    async function removeListing(id) {
+      try {
+        const res = await fetch('/api/listings/' + id, { method: 'DELETE', headers });
+        if (res.ok) {
+          marketplaceListings = marketplaceListings.filter(l => l.id !== id);
+          renderListings();
+          showStatus('Listing removed');
+        }
+      } catch (_) {
+        showStatus('Failed to remove listing');
+      }
+    }
+
+    // --- Sell modal ---
+
+    function openSellModal() {
+      document.getElementById('sell-title').value = '';
+      document.getElementById('sell-price').value = '';
+      document.getElementById('sell-status').textContent = '';
+      document.getElementById('sell-submit').disabled = false;
+      document.getElementById('sell-submit-spinner').classList.add('hidden');
+
+      // Show current board as preview
+      const previewUrl = captureSnapshot(320, 0.75);
+      document.getElementById('sell-preview-img').src = previewUrl;
+
+      const modal = document.getElementById('sell-modal');
+      modal.style.display = 'flex';
+      modal.classList.remove('hidden');
+    }
+
+    function closeSellModal() {
+      const modal = document.getElementById('sell-modal');
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    }
+
+    async function submitListing() {
+      if (sellInFlight) return;
+      const title = document.getElementById('sell-title').value.trim();
+      const priceStr = document.getElementById('sell-price').value.trim();
+      const price = parseInt(priceStr, 10);
+      const statusEl = document.getElementById('sell-status');
+
+      if (!title) { statusEl.textContent = 'Title is required.'; return; }
+      if (title.length > 80) { statusEl.textContent = 'Title must be 80 characters or fewer.'; return; }
+      if (!priceStr || isNaN(price) || price < 1) { statusEl.textContent = 'Price must be at least 1.'; return; }
+
+      sellInFlight = true;
+      const btn = document.getElementById('sell-submit');
+      btn.disabled = true;
+      document.getElementById('sell-submit-spinner').classList.remove('hidden');
+      statusEl.textContent = 'Capturing board…';
+
+      let thumbnail, image_data;
+      try {
+        thumbnail = captureSnapshot(320, 0.75);
+        image_data = captureSnapshot(1280, 0.85);
+      } catch (_) {
+        statusEl.textContent = 'Failed to capture board.';
+        sellInFlight = false;
+        btn.disabled = false;
+        document.getElementById('sell-submit-spinner').classList.add('hidden');
+        return;
+      }
+
+      statusEl.textContent = 'Saving listing…';
+      try {
+        const res = await fetch('/api/listings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ title, price, thumbnail, image_data })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          statusEl.textContent = data.error || 'Failed to create listing.';
+          return;
+        }
+        closeSellModal();
+        await loadListings();
+        showStatus('Listing created!');
+      } catch (_) {
+        statusEl.textContent = 'Failed to create listing.';
+      } finally {
+        sellInFlight = false;
+        btn.disabled = false;
+        document.getElementById('sell-submit-spinner').classList.add('hidden');
+      }
+    }
+
+    // --- Buy confirmation modal ---
+
+    function openBuyModal(listing) {
+      buyTargetListing = listing;
+      document.getElementById('buy-modal-thumb').src = listing.thumbnail;
+      document.getElementById('buy-modal-title').textContent = listing.title;
+      document.getElementById('buy-modal-seller').textContent = 'by ' + listing.seller_username;
+      document.getElementById('buy-modal-price').textContent = listing.price + ' tokens';
+      document.getElementById('buy-modal-status').textContent = '';
+      document.getElementById('buy-confirm-btn').disabled = false;
+      document.getElementById('buy-confirm-spinner').classList.add('hidden');
+      const modal = document.getElementById('buy-modal');
+      modal.style.display = 'flex';
+      modal.classList.remove('hidden');
+    }
+
+    function closeBuyModal() {
+      buyTargetListing = null;
+      const modal = document.getElementById('buy-modal');
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    }
+
+    async function confirmPurchase() {
+      if (buyInFlight || !buyTargetListing) return;
+      const listing = buyTargetListing;
+      const statusEl = document.getElementById('buy-modal-status');
+      const btn = document.getElementById('buy-confirm-btn');
+      const spinner = document.getElementById('buy-confirm-spinner');
+
+      const bridge = window.usernode;
+      if (!bridge || typeof bridge.sendTransaction !== 'function') {
+        statusEl.textContent = 'Payment bridge unavailable. Reload to try again.';
+        return;
+      }
+      if (!listing.payee_pubkey) {
+        statusEl.textContent = 'Seller wallet not configured.';
+        return;
+      }
+
+      buyInFlight = true;
+      btn.disabled = true;
+      spinner.classList.remove('hidden');
+      statusEl.textContent = 'Awaiting payment confirmation…';
+
+      try {
+        const result = await bridge.sendTransaction(listing.payee_pubkey, listing.price, 'whiteboard:listing:' + listing.id);
+        const txId = extractTxId(result);
+        if (!txId) {
+          statusEl.textContent = 'Could not read transaction id. Please try again.';
+          return;
+        }
+        statusEl.textContent = 'Recording purchase…';
+        const res = await fetch('/api/listings/' + listing.id + '/purchase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ tx_id: txId })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          statusEl.textContent = err.error || 'Failed to record purchase.';
+          return;
+        }
+        const data = await res.json();
+        purchasedImages.set(listing.id, data.image_data);
+        const idx = marketplaceListings.findIndex(l => l.id === listing.id);
+        if (idx !== -1) marketplaceListings[idx].purchased = true;
+        closeBuyModal();
+        renderListings();
+        showStatus('Purchase complete!');
+      } catch (err) {
+        const msg = (err && err.message) || '';
+        statusEl.textContent = /cancel/i.test(msg) ? 'Purchase cancelled.' : 'Purchase failed. Try again.';
+      } finally {
+        buyInFlight = false;
+        btn.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    // Wire up marketplace UI
+    document.getElementById('btn-marketplace').addEventListener('click', () => {
+      if (marketplacePanelOpen) { closeMarketplacePanel(); } else { openMarketplacePanel(); }
+    });
+    document.getElementById('marketplace-close').addEventListener('click', closeMarketplacePanel);
+    document.getElementById('marketplace-refresh').addEventListener('click', loadListings);
+    document.getElementById('marketplace-sell-btn').addEventListener('click', () => {
+      if (!strokes.length) { showStatus('Draw something first before selling a snapshot.'); return; }
+      openSellModal();
+    });
+    document.getElementById('sell-cancel').addEventListener('click', closeSellModal);
+    document.getElementById('sell-submit').addEventListener('click', submitListing);
+    document.getElementById('sell-modal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('sell-modal')) closeSellModal();
+    });
+    document.getElementById('buy-cancel').addEventListener('click', closeBuyModal);
+    document.getElementById('buy-confirm-btn').addEventListener('click', confirmPurchase);
+    document.getElementById('buy-modal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('buy-modal')) closeBuyModal();
+    });
   </script>
 </body>
 </html>
