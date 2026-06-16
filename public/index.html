@@ -2179,6 +2179,24 @@
       };
     }
 
+    function startEraseStroke(e) {
+      if (e.target.closest('.toolbar')) return;
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getPos(e);
+      pos.t = performance.now();
+      const pr0 = getPressure(e);
+      if (pr0 > 0) pos.pr = pr0;
+      currentStroke = {
+        points: [pos],
+        color: strokeColor,
+        width: strokeWidth,
+        eraser: true,
+        rainbow: false,
+        emaWidth: null
+      };
+    }
+
     // Re-render the live shape preview on top of the committed strokes while
     // the user drags. redrawAll() has already cleared and repainted the board.
     function drawShapePreview() {
@@ -2415,10 +2433,12 @@
       // Eraser: behavior depends on mode
       if (tool === 'eraser' && e.button === 0) {
         e.preventDefault();
-        isErasing = true;
         if (eraserMode === 'pixel') {
-          eraseAt(getPos(e));
-        } else if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          startEraseStroke(e);
+          return;
+        }
+        isErasing = true;
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
           erasePath = [getPos(e)];
         }
         return;
@@ -2459,9 +2479,7 @@
         canvas.style.cursor = h !== -1 ? HANDLE_DEFS[h].cursor : 'default';
       }
       if (isErasing) {
-        if (eraserMode === 'pixel') {
-          eraseAt(getPos(e));
-        } else if (eraserMode === 'stroke' || eraserMode === 'layer') {
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
           erasePath.push(getPos(e));
         }
         return;
@@ -2483,7 +2501,10 @@
           eraseAlongPath(erasePath, eraserMode);
           erasePath = [];
         }
-        return;
+        // Pixel mode uses the drawing pipeline, so fall through to endDraw
+        if (eraserMode !== 'pixel') {
+          return;
+        }
       }
       endDraw(e);
     });
@@ -2503,7 +2524,10 @@
           eraseAlongPath(erasePath, eraserMode);
           erasePath = [];
         }
-        return;
+        // Pixel mode uses the drawing pipeline, so fall through to endDraw
+        if (eraserMode !== 'pixel') {
+          return;
+        }
       }
       endDraw(e);
     });
