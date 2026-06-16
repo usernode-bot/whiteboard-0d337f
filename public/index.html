@@ -2260,6 +2260,13 @@
 
       pts.push(pos);
 
+      // For eraser strokes, redraw all existing content first so destination-out
+      // has a canvas to erase from. Pen strokes can draw incrementally since
+      // source-over just adds on top, but eraser needs the full background.
+      if (currentStroke.eraser) {
+        redrawAll();
+      }
+
       // Draw the newly-added smoothed segment incrementally. The quadratic
       // midpoint method is causal, so the segment up to the previous midpoint
       // is final; endDraw's redrawAll repaints the fully-smoothed stroke.
