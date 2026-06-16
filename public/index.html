@@ -3685,19 +3685,113 @@
       });
     }
 
+    // Rain animation state
+    let rainActive = false;
+    let rainSpawnRafId = null;
+    const RAIN_DURATION_MS = 15000;
+
+    function startRain() {
+      if (rainActive) return;
+      rainActive = true;
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '⏹';
+      const startTime = performance.now();
+      let lastSpawn = 0;
+      let nextInterval = 300 + Math.random() * 200;
+
+      function spawnLoop(now) {
+        if (!rainActive) return;
+        if (now - startTime < RAIN_DURATION_MS) {
+          if (now - lastSpawn >= nextInterval) {
+            lastSpawn = now;
+            nextInterval = 300 + Math.random() * 200;
+            const type = Math.random() < 0.75 ? 'snowflake' : 'bomb';
+            spawnParticle(type);
+          }
+          rainSpawnRafId = requestAnimationFrame(spawnLoop);
+        } else {
+          rainSpawnRafId = null;
+        }
+      }
+
+      rainSpawnRafId = requestAnimationFrame(spawnLoop);
+    }
+
+    function stopRain() {
+      rainActive = false;
+      if (rainSpawnRafId) {
+        cancelAnimationFrame(rainSpawnRafId);
+        rainSpawnRafId = null;
+      }
+      document.querySelectorAll('.rain-particle').forEach(el => el.remove());
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '🌨️';
+    }
+
+    function spawnParticle(type) {
+      const el = document.createElement('div');
+      el.className = 'rain-particle';
+      el.style.position = 'fixed';
+      el.style.zIndex = '9999';
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      el.style.userSelect = 'none';
+      el.style.lineHeight = '1';
+
+      const fontSize = type === 'snowflake' ? (Math.random() * 125 + 25) : 48;
+      el.style.fontSize = fontSize + 'px';
+      el.textContent = type === 'snowflake' ? '❄️' : '💣';
+
+      const startX = Math.random() * window.innerWidth;
+      el.style.left = startX + 'px';
+      el.style.top = '-60px';
+
+      el.addEventListener('click', () => {
+        el.remove();
+        if (type === 'snowflake') {
+          onSnowflakeTap();
+        } else {
+          onBombExplosion();
+        }
+      });
+
+      document.body.appendChild(el);
+      animateParticle(el, startX, fontSize);
+    }
+
+    function animateParticle(el, startX, fontSize) {
+      const speed = 2 + Math.random() * 3 * (fontSize / 150);
+      const wobbleFreq = 0.03 + Math.random() * 0.02;
+      const wobbleAmp = 10 + Math.random() * 10;
+      let y = -60;
+      let frame = Math.random() * 100;
+
+      function step() {
+        if (!el.parentNode) return;
+        y += speed;
+        frame++;
+        const xOffset = Math.sin(frame * wobbleFreq) * wobbleAmp;
+        el.style.top = y + 'px';
+        el.style.left = (startX + xOffset) + 'px';
+        if (y > window.innerHeight + 60) {
+          el.remove();
+          return;
+        }
+        requestAnimationFrame(step);
+      }
+
+      requestAnimationFrame(step);
+    }
+
     // Rain launch button handler
     function initRainButton() {
       const btn = document.getElementById('btn-rain-launch');
       if (!btn) return;
       btn.addEventListener('click', () => {
-        // Trigger the snowflake and bomb rain animation.
-        // This function is called when the user clicks the rain button.
-        // If a rain animation system exists, launch it here.
-        // For now, this is a placeholder that can be connected to the animation.
-        if (typeof startRain === 'function') {
-          startRain();
+        if (rainActive) {
+          stopRain();
         } else {
-          console.log('Rain animation not yet implemented. Click the button to launch snowflakes and bombs!');
+          startRain();
         }
       });
     }
