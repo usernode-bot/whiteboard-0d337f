@@ -162,7 +162,7 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; touch-action: none; }
     body { font-family: var(--font-ui); color: var(--text-primary); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; }
+    canvas { display: block; cursor: crosshair; position: relative; z-index: 1; margin-top: 48px; }
 
     /* Static dot-grid texture on the page background layer (behind the
        transparent canvas) so it never touches stroke compositing or PDF
@@ -403,6 +403,21 @@
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
+  <div id="balance-header" class="fixed top-0 left-0 right-0 h-12 bg-white dark:bg-zinc-800 border-b border-zinc-300 dark:border-zinc-700 flex items-center justify-center gap-8 z-[45]">
+    <div class="flex items-center gap-2 text-sm font-medium">
+      <span>❄️</span>
+      <span>=</span>
+      <span id="balance-snowflakes">0</span>
+      <span class="text-xs text-zinc-500 dark:text-zinc-400">SF</span>
+    </div>
+    <div class="flex items-center gap-2 text-sm font-medium">
+      <span>🪙</span>
+      <span>=</span>
+      <span id="balance-tokens">0</span>
+      <span class="text-xs text-zinc-500 dark:text-zinc-400">TKN</span>
+    </div>
+  </div>
+
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
@@ -833,6 +848,10 @@
     let shapeStart = null;
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
+
+    // Balance state (snowflakes and tokens)
+    let userBalance = { snowflakes: 0, tokens: 0 };
+    let lastActionTime = {}; // track action timing for deduplication
 
     // Highlight the active swatch in a popover grid (color or background).
     function syncSelectedSwatch(containerId, value) {
@@ -3592,6 +3611,83 @@
       document.getElementById('empty-state').style.display = empty ? 'flex' : 'none';
     }
 
+    // --- Balance management (snowflakes and tokens) ---
+
+    function updateBalanceDisplay() {
+      document.getElementById('balance-snowflakes').textContent = String(userBalance.snowflakes);
+      document.getElementById('balance-tokens').textContent = String(userBalance.tokens);
+    }
+
+    async function loadBalance() {
+      try {
+        const res = await fetch('/api/balance', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          userBalance = { snowflakes: data.snowflakes, tokens: data.tokens };
+          updateBalanceDisplay();
+        } else if (res.status === 404) {
+          userBalance = { snowflakes: 0, tokens: 0 };
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to load balance:', err);
+      }
+    }
+
+    async function onSnowflakeTap() {
+      const actionKey = 'snowflake_tap_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'snowflake_tap', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record snowflake tap:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
+    async function onBombExplosion() {
+      const actionKey = 'bomb_explosion_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'bomb_explosion', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record bomb explosion:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
     // --- Text tool helpers ---
 
     function openTextInput(screenX, screenY) {
@@ -4328,6 +4424,7 @@
     initToolbarPosition();
     loadStrokes();
     loadThreads();
+    loadBalance();
     connectSSE();
   </script>
 </body>
