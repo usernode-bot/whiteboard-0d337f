@@ -575,6 +575,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
       </button>
 
+      <button id="btn-history" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="History — jump to a point">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+      </button>
+
       <button id="btn-layers" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Layers">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </button>
@@ -628,6 +632,14 @@
       <input id="color-custom-stroke" type="color" value="#1c1917" class="w-7 h-7 rounded-md bg-transparent">
       Custom
     </label>
+  </div>
+
+  <div id="history-popover" class="hidden fixed bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl shadow-lg z-[60] w-64">
+    <div class="px-3 py-2 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+      <p class="text-xs font-medium text-zinc-600 dark:text-zinc-300">History</p>
+      <p class="text-[10px] text-zinc-400 dark:text-zinc-500">jump to a point</p>
+    </div>
+    <div id="history-list" class="max-h-[60vh] overflow-y-auto p-1"></div>
   </div>
 
   <div id="emoji-picker" class="panel-surface fixed top-20 left-1/2 -translate-x-1/2 rounded-2xl p-3 z-50 hidden max-w-[96vw]">
@@ -745,6 +757,18 @@
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
+    // Decode the username from the JWT payload (label only — not trusted for
+    // auth; the server re-verifies the token on every write). Used to tag
+    // locally-created edits in the history dropdown before any reload.
+    let currentUsername = 'You';
+    try {
+      if (token) {
+        const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(part));
+        currentUsername = payload.username || payload.name || 'You';
+      }
+    } catch (_) {}
+
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
@@ -759,6 +783,7 @@
     // Action-history undo/redo. Each entry: {type:'add'|'delete'|'move'|'reorder', id, ...}
     let undoStack = [];
     let redoActions = [];
+    let redoStack = [];
     let currentStroke = null;
     // Decoded <img> cache keyed by image src / data URL.
     const imageCache = new Map();
@@ -2051,10 +2076,11 @@
       const item = { type: 'emoji', emoji: selectedEmoji, x: pos.x, y: pos.y, size: EMOJI_SIZE, dx: 0, dy: 0 };
       saveStroke(item).then((saved) => {
         if (saved) {
-          strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index });
+          strokes.push({ id: saved.id, stroke_data: item, z_index: saved.z_index, username: currentUsername, created_at: saved.created_at });
           recordAction({ type: 'add', id: saved.id, data: item });
           sortStrokes();
           redrawAll();
+          historyChanged();
         }
       });
       setActiveTool('pen');
@@ -2220,8 +2246,10 @@
             };
             const saved = await saveStroke(strokeData);
             if (saved) {
-              strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+              strokes.push({ id: saved.id, stroke_data: strokeData, username: currentUsername, created_at: saved.created_at, z_index: saved.z_index });
               recordAction({ type: 'add', id: saved.id, data: strokeData });
+              redoStack = [];
+              historyChanged();
             }
           }
         }
@@ -2259,8 +2287,9 @@
         };
         const saved = await saveStroke(strokeData);
         if (saved) {
-          strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+          strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index, username: currentUsername, created_at: saved.created_at });
           recordAction({ type: 'add', id: saved.id, data: strokeData });
+          historyChanged();
         }
       }
       currentStroke = null;
@@ -3147,7 +3176,7 @@
       const a = undoStack.pop();
       await applyUndo(a);
       redoActions.push(a);
-      updateUndoRedoButtons();
+      historyChanged();
     });
 
     document.getElementById('btn-redo').addEventListener('click', async () => {
@@ -3155,8 +3184,191 @@
       const a = redoActions.pop();
       await applyRedo(a);
       undoStack.push(a);
-      updateUndoRedoButtons();
+      historyChanged();
     });
+
+    // --- History dropdown: jump directly to any point in the timeline ---
+    const historyPopover = document.getElementById('history-popover');
+    const btnHistory = document.getElementById('btn-history');
+    const historyList = document.getElementById('history-list');
+
+    function describeAction(sd) {
+      if (!sd) return { icon: '•', label: 'Edit' };
+      if (sd.type === 'text') return { icon: 'T', label: 'Text' };
+      if (sd.type === 'image') return { icon: '🖼', label: 'Image' };
+      if (sd.type === 'emoji') return { icon: sd.emoji || '😀', label: 'Emoji' };
+      if (sd.type === 'shape') {
+        const names = { line: 'Line', rect: 'Rectangle', circle: 'Circle' };
+        return { icon: '◇', label: names[sd.shape] || 'Shape' };
+      }
+      if (sd.eraser) return { icon: '⌫', label: 'Eraser' };
+      if (sd.rainbow) return { icon: '🌈', label: 'Rainbow' };
+      return { icon: '✏️', label: 'Pen' };
+    }
+
+    function relativeTime(ts) {
+      if (!ts) return '';
+      const t = new Date(ts).getTime();
+      if (isNaN(t)) return '';
+      const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (s < 5) return 'just now';
+      if (s < 60) return s + 's ago';
+      const m = Math.round(s / 60);
+      if (m < 60) return m + 'm ago';
+      const h = Math.round(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.round(h / 24) + 'd ago';
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function updateUndoRedoButtons() {
+      const u = document.getElementById('btn-undo');
+      const r = document.getElementById('btn-redo');
+      const uDis = undoStack.length === 0;
+      const rDis = redoActions.length === 0;
+      u.disabled = uDis; r.disabled = rDis;
+      u.classList.toggle('opacity-40', uDis);
+      u.classList.toggle('pointer-events-none', uDis);
+      r.classList.toggle('opacity-40', rDis);
+      r.classList.toggle('pointer-events-none', rDis);
+    }
+
+    // Renders the unified timeline newest-first: undone (forward) entries on
+    // top, a divider for the current view, then committed entries below.
+    function renderHistory() {
+      if (!historyList) return;
+      const total = strokes.length + redoStack.length;
+      if (total === 0) {
+        historyList.innerHTML =
+          '<p class="text-xs text-zinc-400 dark:text-zinc-500 text-center py-4">No history yet</p>';
+        return;
+      }
+      // Chronological oldest->newest. redoStack is a stack (top = nearest the
+      // present), so reversing it yields present->future order.
+      const timeline = strokes.concat(redoStack.slice().reverse());
+      const boundary = strokes.length; // indices < boundary are committed
+      let html = '';
+      for (let i = timeline.length - 1; i >= 0; i--) {
+        const entry = timeline[i];
+        const sd = entry.stroke_data || entry;
+        const { icon, label } = describeAction(sd);
+        const isFuture = i >= boundary;
+        const isCurrent = i === boundary - 1;
+        // Divider sits between the forward (undone) section and the committed
+        // section — emitted just before the most-recent committed entry.
+        if (isCurrent && timeline.length > boundary) {
+          html += '<div class="flex items-center gap-2 px-2 py-1">' +
+            '<div class="h-px flex-1 bg-violet-400/60"></div>' +
+            '<span class="text-[10px] text-violet-500 dark:text-violet-400">current view</span>' +
+            '<div class="h-px flex-1 bg-violet-400/60"></div></div>';
+        }
+        const base = 'w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs cursor-pointer';
+        const tone = isFuture
+          ? 'opacity-50 italic hover:bg-zinc-100 dark:hover:bg-zinc-700'
+          : (isCurrent
+            ? 'bg-violet-500/10 hover:bg-violet-500/20'
+            : 'hover:bg-zinc-100 dark:hover:bg-zinc-700');
+        html += '<button type="button" data-idx="' + i + '" class="' + base + ' ' + tone + '">' +
+          '<span class="w-5 text-center flex-shrink-0">' + escapeHtml(icon) + '</span>' +
+          '<span class="flex-1 min-w-0 block">' +
+            '<span class="block text-zinc-700 dark:text-zinc-200 truncate">' + escapeHtml(label) +
+            ' · <span class="text-zinc-500 dark:text-zinc-400">' + escapeHtml(entry.username || 'unknown') + '</span></span>' +
+          '</span>' +
+          '<span class="text-[10px] text-zinc-400 dark:text-zinc-500 flex-shrink-0">' + escapeHtml(relativeTime(entry.created_at)) + '</span>' +
+          '</button>';
+      }
+      historyList.innerHTML = html;
+    }
+
+    function historyChanged() {
+      updateUndoRedoButtons();
+      if (historyPopover && !historyPopover.classList.contains('hidden')) renderHistory();
+    }
+
+    // Move the committed/undone boundary to timeline index `i`. Backward jumps
+    // delete the trailing rows in one shared, atomic call; forward jumps replay
+    // the undone edits one at a time (each re-inserts a row). One redraw at end.
+    async function jumpToIndex(i) {
+      const total = strokes.length + redoStack.length;
+      if (i < 0 || i >= total) return;
+      if (i < strokes.length) {
+        if (i === strokes.length - 1) return; // already at this point
+        const anchor = strokes[i];
+        const future = strokes.slice(i + 1).concat(redoStack.slice().reverse());
+        try {
+          await fetch('/api/strokes/truncate-after', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ afterId: anchor ? anchor.id : null })
+          });
+        } catch (err) {
+          console.error('Jump (truncate) failed:', err);
+        }
+        strokes = strokes.slice(0, i + 1);
+        redoStack = future.reverse(); // back to stack order (top = nearest present)
+      } else {
+        const steps = i - (strokes.length - 1);
+        for (let k = 0; k < steps; k++) {
+          if (redoStack.length === 0) break;
+          const stroke = redoStack.pop();
+          const data = stroke.stroke_data || stroke;
+          const saved = await saveStroke(data);
+          if (saved) { stroke.id = saved.id; stroke.created_at = saved.created_at; }
+          strokes.push(stroke);
+        }
+      }
+      redrawAll();
+      historyChanged();
+    }
+
+    function openHistoryPopover() {
+      // Commit any in-progress text first, mirroring setActiveTool().
+      const textInput = document.getElementById('text-input');
+      if (tool === 'text' && textInput.style.display !== 'none') commitText();
+      renderHistory();
+      const rect = btnHistory.getBoundingClientRect();
+      historyPopover.style.top = (rect.bottom + 8) + 'px';
+      const left = Math.min(rect.left, window.innerWidth - 268);
+      historyPopover.style.left = Math.max(4, left) + 'px';
+      historyPopover.classList.remove('hidden');
+    }
+
+    function closeHistoryPopover() { historyPopover.classList.add('hidden'); }
+
+    btnHistory.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (historyPopover.classList.contains('hidden')) {
+        document.getElementById('color-popover').classList.add('hidden');
+        document.getElementById('bg-popover').classList.add('hidden');
+        openHistoryPopover();
+      } else {
+        closeHistoryPopover();
+      }
+    });
+
+    historyPopover.addEventListener('click', (e) => e.stopPropagation());
+    historyList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-idx]');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx, 10);
+      closeHistoryPopover();
+      jumpToIndex(idx);
+    });
+
+    // Close on outside mousedown — fires before click, no stopPropagation needed.
+    document.addEventListener('mousedown', (e) => {
+      if (!historyPopover.classList.contains('hidden') &&
+          !historyPopover.contains(e.target) &&
+          !btnHistory.contains(e.target)) {
+        closeHistoryPopover();
+      }
+    });
+
+    updateUndoRedoButtons();
 
     // Layers panel toggle
     (function initLayersPanel() {
@@ -3218,6 +3430,7 @@
       updateUndoRedoButtons();
       deselectLayer();
       redrawAll();
+      historyChanged();
     });
 
     document.getElementById('btn-theme').addEventListener('click', () => {
@@ -3433,10 +3646,11 @@
       };
       const saved = await saveStroke(strokeData);
       if (saved) {
-        strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index });
+        strokes.push({ id: saved.id, stroke_data: strokeData, z_index: saved.z_index, username: currentUsername, created_at: saved.created_at });
         recordAction({ type: 'add', id: saved.id, data: strokeData });
         sortStrokes();
         redrawAll();
+        historyChanged();
       }
     }
 
@@ -3814,6 +4028,7 @@
         deselectLayer();
         sortStrokes();
         redrawAll();
+        historyChanged();
         showStatus('Board refreshed');
       } catch (err) {
         console.error('Load failed:', err);
@@ -3831,9 +4046,10 @@
         const exists = strokes.some(s => s.id === data.id);
         if (!exists) {
           const strokeData = typeof data.stroke_data === 'string' ? JSON.parse(data.stroke_data) : data.stroke_data;
-          strokes.push({ id: data.id, stroke_data: strokeData, z_index: data.z_index });
+          strokes.push({ id: data.id, stroke_data: strokeData, z_index: data.z_index, username: data.username, created_at: data.created_at });
           sortStrokes();
           redrawAll();
+          historyChanged();
         }
       });
 
@@ -3855,7 +4071,29 @@
         if (idx !== -1) {
           if (selectedLayer && selectedLayer.id === data.id) deselectLayer();
           strokes.splice(idx, 1);
+          // Remote single-step undo changed the committed history; local
+          // forward history can no longer be replayed reliably.
+          redoStack = [];
           redrawAll();
+          historyChanged();
+        }
+      });
+
+      // Bulk "jump to a point" from another client. We only treat it as a
+      // remote change if at least one id is still present locally — when this
+      // client initiated the jump it already removed those rows and rebuilt its
+      // own redoStack, so the echoed event is a no-op and must not wipe it.
+      es.addEventListener('undo-batch', (e) => {
+        const data = JSON.parse(e.data);
+        const ids = new Set(data.ids || []);
+        let removedAny = false;
+        for (let i = strokes.length - 1; i >= 0; i--) {
+          if (ids.has(strokes[i].id)) { strokes.splice(i, 1); removedAny = true; }
+        }
+        if (removedAny) {
+          redoStack = [];
+          redrawAll();
+          historyChanged();
         }
       });
 
@@ -3866,6 +4104,7 @@
         updateUndoRedoButtons();
         deselectLayer();
         redrawAll();
+        historyChanged();
         // Strokes are gone; re-fetch threads so anchors that the server
         // nulled (ON DELETE SET NULL) are reflected locally.
         loadThreads();

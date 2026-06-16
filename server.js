@@ -159,6 +159,28 @@ app.delete('/api/strokes/:id', async (req, res) => {
   }
 });
 
+// Bulk "jump to a point in history": delete every stroke after the given
+// anchor id (or all strokes when afterId is null). Unrestricted by owner,
+// matching the trust model of Clear — any authenticated user may roll the
+// shared board back to an earlier point. Broadcasts the removed ids so all
+// clients drop them at once.
+app.post('/api/strokes/truncate-after', async (req, res) => {
+  try {
+    const { afterId } = req.body;
+    let rows;
+    if (afterId === null || afterId === undefined) {
+      ({ rows } = await pool.query('DELETE FROM strokes RETURNING id'));
+    } else {
+      ({ rows } = await pool.query('DELETE FROM strokes WHERE id > $1 RETURNING id', [afterId]));
+    }
+    const ids = rows.map(r => r.id);
+    res.json({ ok: true, ids });
+    broadcast('undo-batch', { ids });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/strokes', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes');
