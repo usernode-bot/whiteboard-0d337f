@@ -4091,47 +4091,63 @@
     const INACTIVITY_MS = 120000;
     let lastInteraction = Date.now();
     let inactivityCheckInterval = null;
+    const IS_STAGING = typeof process !== 'undefined' && process.env && process.env.USERNODE_ENV === 'staging';
 
     function checkInactivity() {
       if (rainActive) return;
-      if (Date.now() - lastInteraction > INACTIVITY_MS) {
+      const elapsed = Date.now() - lastInteraction;
+      if (IS_STAGING) {
+        console.log('[inactivity] check: elapsed=' + Math.round(elapsed/1000) + 's, threshold=' + Math.round(INACTIVITY_MS/1000) + 's');
+      }
+      if (elapsed > INACTIVITY_MS) {
+        if (IS_STAGING) console.log('[inactivity] threshold crossed, triggering rain');
         startRain();
       }
     }
 
-    function resetInactivityTimer() {
+    function resetInactivityTimer(source) {
       lastInteraction = Date.now();
+      if (IS_STAGING) {
+        console.log('[inactivity] timer reset by: ' + (source || 'unknown'));
+      }
       if (rainActive) {
         stopRain();
       }
     }
 
     function initInactivityDetection() {
+      if (IS_STAGING) console.log('[inactivity] initializing inactivity detection (120s threshold)');
       inactivityCheckInterval = setInterval(checkInactivity, 5000);
+      if (IS_STAGING) console.log('[inactivity] setInterval created, id=' + inactivityCheckInterval);
 
-      canvas.addEventListener('pointerdown', resetInactivityTimer);
-      canvas.addEventListener('touchstart', resetInactivityTimer);
-      canvas.addEventListener('wheel', resetInactivityTimer);
+      canvas.addEventListener('pointerdown', () => resetInactivityTimer('pointerdown'));
+      canvas.addEventListener('touchstart', () => resetInactivityTimer('touchstart'));
+      canvas.addEventListener('wheel', () => resetInactivityTimer('wheel'));
+      canvas.addEventListener('mousemove', () => resetInactivityTimer('mousemove'));
 
       document.addEventListener('click', (e) => {
-        if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker') || e.target.closest('.toolbar-menu')) {
-          resetInactivityTimer();
+        const isToolbar = e.target.closest('.toolbar') || e.target.closest('#emoji-picker') || e.target.closest('.toolbar-menu');
+        const isCanvas = e.target === canvas || canvas.contains(e.target);
+        if (isToolbar || isCanvas) {
+          resetInactivityTimer(isToolbar ? 'toolbar-click' : 'canvas-click');
         }
       });
 
-      document.getElementById('text-input').addEventListener('input', resetInactivityTimer);
-      document.getElementById('text-input').addEventListener('keydown', resetInactivityTimer);
+      document.getElementById('text-input').addEventListener('input', () => resetInactivityTimer('text-input'));
+      document.getElementById('text-input').addEventListener('keydown', () => resetInactivityTimer('text-keydown'));
 
       const colorInput = document.querySelector('input[type="color"]');
       if (colorInput) {
-        colorInput.addEventListener('change', resetInactivityTimer);
-        colorInput.addEventListener('input', resetInactivityTimer);
+        colorInput.addEventListener('change', () => resetInactivityTimer('color-change'));
+        colorInput.addEventListener('input', () => resetInactivityTimer('color-input'));
       }
 
       const rangeInputs = document.querySelectorAll('input[type="range"]');
       rangeInputs.forEach(input => {
-        input.addEventListener('input', resetInactivityTimer);
+        input.addEventListener('input', () => resetInactivityTimer('range-input'));
       });
+
+      if (IS_STAGING) console.log('[inactivity] event listeners attached');
     }
 
     // --- Text tool helpers ---
