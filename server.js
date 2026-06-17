@@ -361,6 +361,95 @@ app.post('/api/brushes/purchase', async (req, res) => {
   }
 });
 
+// --- User balance endpoints ---
+
+// Get user's current balance (auto-create with 0/0 if missing).
+app.get('/api/balance', async (req, res) => {
+  try {
+    let { rows } = await pool.query(
+      'SELECT snowflakes, tokens, last_updated FROM user_balances WHERE user_id = $1',
+      [req.user.id]
+    );
+    if (rows.length === 0) {
+      // Auto-create with 0/0
+      await pool.query(
+        'INSERT INTO user_balances (user_id, username, snowflakes, tokens) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING',
+        [req.user.id, req.user.username, 0, 0]
+      );
+      rows = [{ snowflakes: 0, tokens: 0, last_updated: new Date().toISOString() }];
+    }
+    res.json({ snowflakes: rows[0].snowflakes, tokens: rows[0].tokens, last_updated: rows[0].last_updated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update balance on snowflake tap or bomb explosion.
+// When snowflakes reach 10, convert to 1 token and reset SF to 0.
+// Bomb explosions reset SF to 0 without affecting TKN.
+app.patch('/api/balance', async (req, res) => {
+  try {
+    const { action, amount } = req.body;
+    if (typeof action !== 'string' || typeof amount !== 'number') {
+      return res.status(400).json({ error: 'action and amount are required' });
+    }
+    if (action !== 'snowflake_tap' && action !== 'bomb_explosion') {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Fetch current balance
+      let { rows } = await client.query(
+        'SELECT snowflakes, tokens FROM user_balances WHERE user_id = $1 FOR UPDATE',
+        [req.user.id]
+      );
+
+      if (rows.length === 0) {
+        // Auto-create if missing
+        await client.query(
+          'INSERT INTO user_balances (user_id, username, snowflakes, tokens) VALUES ($1, $2, $3, $4)',
+          [req.user.id, req.user.username, 0, 0]
+        );
+        rows = [{ snowflakes: 0, tokens: 0 }];
+      }
+
+      let snowflakes = rows[0].snowflakes;
+      let tokens = rows[0].tokens;
+
+      if (action === 'snowflake_tap') {
+        snowflakes += amount;
+        // Convert 10 snowflakes to 1 token
+        if (snowflakes >= 10) {
+          tokens += Math.floor(snowflakes / 10);
+          snowflakes = snowflakes % 10;
+        }
+      } else if (action === 'bomb_explosion') {
+        // Reset snowflakes on bomb explosion, don't affect tokens
+        snowflakes = 0;
+      }
+
+      // Update balance
+      await client.query(
+        'UPDATE user_balances SET snowflakes = $1, tokens = $2, last_updated = NOW() WHERE user_id = $3',
+        [snowflakes, tokens, req.user.id]
+      );
+
+      await client.query('COMMIT');
+      res.json({ ok: true, snowflakes, tokens });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Marketplace listings ---
 
 // All active listings with purchase state for the requesting user.
@@ -627,6 +716,31 @@ async function start() {
       `INSERT INTO listing_purchases (listing_id, buyer_id, buyer_username, tx_id, amount)
        VALUES (900001, 'staging-user', 'staging-user', 'staging-seed', 100)
        ON CONFLICT (listing_id, buyer_id) DO NOTHING`
+    );
+  }
+
+  // User balance table: snowflakes (SF) and tokens (TKN).
+  // Private: holds per-user currency balances.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_balances (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      username TEXT NOT NULL,
+      snowflakes INTEGER DEFAULT 0,
+      tokens INTEGER DEFAULT 0,
+      last_updated TIMESTAMPTZ DEFAULT NOW(),
+      CONSTRAINT user_balances_non_negative CHECK (snowflakes >= 0 AND tokens >= 0)
+    )
+  `);
+  await pool.query("COMMENT ON TABLE user_balances IS 'staging:private'");
+
+  // Seed staging with a test user for balance testing.
+  if (IS_STAGING) {
+    await pool.query(
+      `INSERT INTO user_balances (user_id, username, snowflakes, tokens)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id) DO NOTHING`,
+      ['staging-user', 'staging-user', 100, 50]
     );
   }
 

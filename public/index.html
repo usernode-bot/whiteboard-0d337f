@@ -418,6 +418,18 @@
   </style>
 </head>
 <body class="bg-white dark:bg-[#1e1e1e]">
+  <!-- Compact balance header in top-left -->
+  <div id="balance-header" class="fixed top-3 left-3 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 z-[45] text-xs font-medium whitespace-nowrap">
+    <span>❄️</span><span id="balance-snowflakes" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">SF</span>
+    <span class="mx-2 text-zinc-300 dark:text-zinc-600">|</span>
+    <span>🪙</span><span id="balance-tokens" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">TKN</span>
+  </div>
+
+  <!-- Rain launch button in top-right -->
+  <button id="btn-rain-launch" class="fixed top-3 right-3 w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors z-[45]" title="Launch snowflake & bomb rain">
+    <span>🌨️</span>
+  </button>
+
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
@@ -490,10 +502,27 @@
       <button id="btn-rainbow" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Rainbow Brush">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17a9 9 0 0 1 18 0" stroke="#ef4444"/><path d="M6 17a6 6 0 0 1 12 0" stroke="#22c55e"/><path d="M9 17a3 3 0 0 1 6 0" stroke="#3b82f6"/></svg>
       </button>
-      <button id="btn-eraser" class="tool-btn labeled-tool rounded-xl flex items-center justify-center text-lg" title="Eraser">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
-        <span class="tool-label">Eraser</span>
-      </button>
+      <!-- Eraser tool with popover -->
+      <div class="relative">
+        <button id="btn-eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg relative" title="Eraser">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+          <span class="absolute bottom-0 right-0 text-xs leading-none">▼</span>
+        </button>
+        <div id="eraser-popover" class="hidden absolute top-12 left-0 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl p-2 shadow-lg z-[60] flex flex-col gap-1">
+          <button data-eraser-mode="pixel" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Pixel Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">P</span>
+          </button>
+          <button data-eraser-mode="stroke" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Stroke Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">S</span>
+          </button>
+          <button data-eraser-mode="layer" class="eraser-mode-opt tool-btn w-28 h-9 rounded-lg flex items-center justify-center gap-1 text-sm" title="Layer Eraser">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            <span class="font-semibold">L</span>
+          </button>
+        </div>
+      </div>
       <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
       </button>
@@ -908,6 +937,8 @@
       { ax: 1, ay: 0, anchorRight: true,  anchorBottom: false, corner: false, cursor: 'ew-resize' }    // 7 left mid
     ];
     let isErasing = false;
+    let eraserMode = 'pixel';  // 'pixel' | 'stroke' | 'layer'
+    let erasePath = [];        // points collected during stroke-erase drag
 
     let strokeColor = isDarkMode() ? DEFAULT_STROKE_DARK : DEFAULT_STROKE_LIGHT;
     let strokeWidth = 3;
@@ -921,6 +952,10 @@
     let shapeStart = null;
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
+
+    // Balance state (snowflakes and tokens)
+    let userBalance = { snowflakes: 0, tokens: 0 };
+    let lastActionTime = {}; // track action timing for deduplication
 
     // Highlight the active swatch in a popover grid (color or background).
     function syncSelectedSwatch(containerId, value) {
@@ -1793,6 +1828,37 @@
       }
     }
 
+    function eraseAlongPath(path, mode) {
+      if (!path || path.length < 1) return;
+      const toErase = new Set();
+      for (const stroke of strokes) {
+        const item = stroke.stroke_data || stroke;
+        if (item.hidden) continue;
+        const bbox = getLayerBBox(item);
+        if (!bbox) continue;
+        for (let i = 0; i < path.length; i++) {
+          const p = path[i];
+          if (p.x >= bbox.minX && p.x <= bbox.maxX &&
+              p.y >= bbox.minY && p.y <= bbox.maxY) {
+            toErase.add(stroke.id);
+            break;
+          }
+        }
+      }
+      for (const id of toErase) {
+        const stroke = strokes.find(s => s.id === id);
+        if (stroke) {
+          recordAction({
+            type: 'delete',
+            id: stroke.id,
+            data: stroke.stroke_data || stroke,
+            z_index: stroke.z_index
+          });
+          removeLayerById(stroke.id);
+        }
+      }
+    }
+
     function deleteSelected() {
       if (!selectedLayer) return;
       const layer = selectedLayer;
@@ -1863,7 +1929,7 @@
         case 'emoji': return 'Emoji ' + (item.emoji || '');
         case 'image': return 'Image';
         case 'shape': {
-          const names = { rect: 'Rectangle', circle: 'Circle', arrow: 'Arrow', line: 'Line' };
+          const names = { rect: 'Rectangle', circle: 'Circle', arrow: 'Arrow', line: 'Line', triangle: 'Triangle', heart: 'Heart', prism: 'Prism' };
           return names[item.shape] || 'Shape';
         }
         default:
@@ -2229,6 +2295,24 @@
       };
     }
 
+    function startEraseStroke(e) {
+      if (e.target.closest('.toolbar')) return;
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getPos(e);
+      pos.t = performance.now();
+      const pr0 = getPressure(e);
+      if (pr0 > 0) pos.pr = pr0;
+      currentStroke = {
+        points: [pos],
+        color: strokeColor,
+        width: strokeWidth,
+        eraser: true,
+        rainbow: false,
+        emaWidth: null
+      };
+    }
+
     // Re-render the live shape preview on top of the committed strokes while
     // the user drags. redrawAll() has already cleared and repainted the board.
     function drawShapePreview() {
@@ -2291,6 +2375,13 @@
       }
 
       pts.push(pos);
+
+      // For eraser strokes, redraw all existing content first so destination-out
+      // has a canvas to erase from. Pen strokes can draw incrementally since
+      // source-over just adds on top, but eraser needs the full background.
+      if (currentStroke.eraser) {
+        redrawAll();
+      }
 
       // Draw the newly-added smoothed segment incrementally. The quadratic
       // midpoint method is causal, so the segment up to the previous midpoint
@@ -2462,11 +2553,17 @@
         beginLayerDrag(getPos(e));
         return;
       }
-      // Object eraser: delete whole layers under the pointer
+      // Eraser: behavior depends on mode
       if (tool === 'eraser' && e.button === 0) {
         e.preventDefault();
+        if (eraserMode === 'pixel') {
+          startEraseStroke(e);
+          return;
+        }
         isErasing = true;
-        eraseAt(getPos(e));
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          erasePath = [getPos(e)];
+        }
         return;
       }
       startDraw(e);
@@ -2505,7 +2602,9 @@
         canvas.style.cursor = h !== -1 ? HANDLE_DEFS[h].cursor : 'default';
       }
       if (isErasing) {
-        eraseAt(getPos(e));
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          erasePath.push(getPos(e));
+        }
         return;
       }
       moveDraw(e);
@@ -2519,7 +2618,17 @@
       }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
-      if (isErasing) { isErasing = false; return; }
+      if (isErasing) {
+        isErasing = false;
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          eraseAlongPath(erasePath, eraserMode);
+          erasePath = [];
+        }
+        // Pixel mode uses the drawing pipeline, so fall through to endDraw
+        if (eraserMode !== 'pixel') {
+          return;
+        }
+      }
       endDraw(e);
     });
 
@@ -2532,7 +2641,17 @@
       }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
-      if (isErasing) { isErasing = false; return; }
+      if (isErasing) {
+        isErasing = false;
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          eraseAlongPath(erasePath, eraserMode);
+          erasePath = [];
+        }
+        // Pixel mode uses the drawing pipeline, so fall through to endDraw
+        if (eraserMode !== 'pixel') {
+          return;
+        }
+      }
       endDraw(e);
     });
 
@@ -2653,10 +2772,17 @@
         return;
       }
 
-      // Object eraser: delete whole layers under the touch
+      // Eraser: behavior depends on mode
       if (tool === 'eraser') {
         e.preventDefault();
-        if (e.touches.length === 1) { isErasing = true; eraseAt(getPos(e)); }
+        if (e.touches.length === 1) {
+          isErasing = true;
+          if (eraserMode === 'pixel') {
+            eraseAt(getPos(e));
+          } else {
+            erasePath = [getPos(e)];
+          }
+        }
         return;
       }
 
@@ -2723,7 +2849,13 @@
 
       if (tool === 'eraser') {
         e.preventDefault();
-        if (isErasing && e.touches.length === 1) eraseAt(getPos(e));
+        if (isErasing && e.touches.length === 1) {
+          if (eraserMode === 'pixel') {
+            eraseAt(getPos(e));
+          } else {
+            erasePath.push(getPos(e));
+          }
+        }
         return;
       }
 
@@ -2746,7 +2878,14 @@
         return;
       }
       if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
-      if (tool === 'eraser') { isErasing = false; return; }
+      if (tool === 'eraser') {
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          eraseAlongPath(erasePath, eraserMode);
+          erasePath = [];
+        }
+        isErasing = false;
+        return;
+      }
       brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
@@ -2763,7 +2902,14 @@
         return;
       }
       if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
-      if (tool === 'eraser') { isErasing = false; return; }
+      if (tool === 'eraser') {
+        if (eraserMode === 'stroke' || eraserMode === 'layer') {
+          eraseAlongPath(erasePath, eraserMode);
+          erasePath = [];
+        }
+        isErasing = false;
+        return;
+      }
       brushCursor.style.display = 'none';
       endDraw(e);
     }, { passive: false });
@@ -2973,6 +3119,39 @@
       });
     });
     document.addEventListener('click', () => hideShapesPopover());
+
+    // --- Eraser tool wiring ---
+    const eraserPopover = document.getElementById('eraser-popover');
+    const btnEraser = document.getElementById('btn-eraser');
+
+    function hideEraserPopover() { eraserPopover.classList.add('hidden'); }
+
+    function markActiveEraserMode() {
+      eraserPopover.querySelectorAll('.eraser-mode-opt').forEach((b) => {
+        b.classList.toggle('active', b.dataset.eraserMode === eraserMode);
+      });
+    }
+
+    btnEraser.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (tool === 'eraser') {
+        eraserPopover.classList.toggle('hidden');
+      } else {
+        setActiveTool('eraser');
+        eraserPopover.classList.remove('hidden');
+      }
+    });
+    eraserPopover.addEventListener('click', (e) => e.stopPropagation());
+    eraserPopover.querySelectorAll('.eraser-mode-opt').forEach((b) => {
+      b.addEventListener('click', () => {
+        eraserMode = b.dataset.eraserMode;
+        markActiveEraserMode();
+        setActiveTool('eraser');
+        hideEraserPopover();
+      });
+    });
+    document.addEventListener('click', () => hideEraserPopover());
+    markActiveEraserMode();
 
     // --- Premium brush purchase flow ---
     const brushModal = document.getElementById('brush-modal');
@@ -3741,6 +3920,194 @@
       document.getElementById('empty-state').style.display = empty ? 'flex' : 'none';
     }
 
+    // --- Balance management (snowflakes and tokens) ---
+
+    function updateBalanceDisplay() {
+      document.getElementById('balance-snowflakes').textContent = String(userBalance.snowflakes);
+      document.getElementById('balance-tokens').textContent = String(userBalance.tokens);
+    }
+
+    async function loadBalance() {
+      try {
+        const res = await fetch('/api/balance', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          userBalance = { snowflakes: data.snowflakes, tokens: data.tokens };
+          updateBalanceDisplay();
+        } else if (res.status === 404) {
+          userBalance = { snowflakes: 0, tokens: 0 };
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to load balance:', err);
+      }
+    }
+
+    async function onSnowflakeTap() {
+      const actionKey = 'snowflake_tap_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'snowflake_tap', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record snowflake tap:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
+    async function onBombExplosion() {
+      const actionKey = 'bomb_explosion_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'bomb_explosion', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record bomb explosion:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
+    // Rain animation state
+    let rainActive = false;
+    let rainSpawnRafId = null;
+    const RAIN_DURATION_MS = 15000;
+
+    function startRain() {
+      if (rainActive) return;
+      rainActive = true;
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '⏹';
+      const startTime = performance.now();
+      let lastSpawn = 0;
+      let nextInterval = 300 + Math.random() * 200;
+
+      function spawnLoop(now) {
+        if (!rainActive) return;
+        if (now - startTime < RAIN_DURATION_MS) {
+          if (now - lastSpawn >= nextInterval) {
+            lastSpawn = now;
+            nextInterval = 300 + Math.random() * 200;
+            const type = Math.random() < 0.75 ? 'snowflake' : 'bomb';
+            spawnParticle(type);
+          }
+          rainSpawnRafId = requestAnimationFrame(spawnLoop);
+        } else {
+          rainSpawnRafId = null;
+        }
+      }
+
+      rainSpawnRafId = requestAnimationFrame(spawnLoop);
+    }
+
+    function stopRain() {
+      rainActive = false;
+      if (rainSpawnRafId) {
+        cancelAnimationFrame(rainSpawnRafId);
+        rainSpawnRafId = null;
+      }
+      document.querySelectorAll('.rain-particle').forEach(el => el.remove());
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '🌨️';
+    }
+
+    function spawnParticle(type) {
+      const el = document.createElement('div');
+      el.className = 'rain-particle';
+      el.style.position = 'fixed';
+      el.style.zIndex = '9999';
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      el.style.userSelect = 'none';
+      el.style.lineHeight = '1';
+
+      const fontSize = type === 'snowflake' ? (Math.random() * 125 + 25) : 48;
+      el.style.fontSize = fontSize + 'px';
+      el.textContent = type === 'snowflake' ? '❄️' : '💣';
+
+      const startX = Math.random() * window.innerWidth;
+      el.style.left = startX + 'px';
+      el.style.top = '-60px';
+
+      el.addEventListener('click', () => {
+        el.remove();
+        if (type === 'snowflake') {
+          onSnowflakeTap();
+        } else {
+          onBombExplosion();
+        }
+      });
+
+      document.body.appendChild(el);
+      animateParticle(el, startX, fontSize);
+    }
+
+    function animateParticle(el, startX, fontSize) {
+      const speed = 2 + Math.random() * 3 * (fontSize / 150);
+      const wobbleFreq = 0.03 + Math.random() * 0.02;
+      const wobbleAmp = 10 + Math.random() * 10;
+      let y = -60;
+      let frame = Math.random() * 100;
+
+      function step() {
+        if (!el.parentNode) return;
+        y += speed;
+        frame++;
+        const xOffset = Math.sin(frame * wobbleFreq) * wobbleAmp;
+        el.style.top = y + 'px';
+        el.style.left = (startX + xOffset) + 'px';
+        if (y > window.innerHeight + 60) {
+          el.remove();
+          return;
+        }
+        requestAnimationFrame(step);
+      }
+
+      requestAnimationFrame(step);
+    }
+
+    // Rain launch button handler
+    function initRainButton() {
+      const btn = document.getElementById('btn-rain-launch');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        if (rainActive) {
+          stopRain();
+        } else {
+          startRain();
+        }
+      });
+    }
+
     // --- Text tool helpers ---
 
     function openTextInput(screenX, screenY) {
@@ -4476,8 +4843,10 @@
     resize();
     setLoading(true);
     initToolbarPosition();
+    initRainButton();
     loadStrokes();
     loadThreads();
+    loadBalance();
     connectSSE();
 
     // --- Marketplace ---
