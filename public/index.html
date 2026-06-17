@@ -425,10 +425,6 @@
     <span>🪙</span><span id="balance-tokens" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">TKN</span>
   </div>
 
-  <!-- Rain launch button in top-right -->
-  <button id="btn-rain-launch" class="fixed top-3 right-3 w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors z-[45]" title="Launch snowflake & bomb rain">
-    <span>🌨️</span>
-  </button>
 
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
@@ -4005,8 +4001,6 @@
     function startRain() {
       if (rainActive) return;
       rainActive = true;
-      const btn = document.getElementById('btn-rain-launch');
-      if (btn) btn.querySelector('span').textContent = '⏹';
       const startTime = performance.now();
       let lastSpawn = 0;
       let nextInterval = 300 + Math.random() * 200;
@@ -4036,8 +4030,6 @@
         rainSpawnRafId = null;
       }
       document.querySelectorAll('.rain-particle').forEach(el => el.remove());
-      const btn = document.getElementById('btn-rain-launch');
-      if (btn) btn.querySelector('span').textContent = '🌨️';
     }
 
     function spawnParticle(type) {
@@ -4095,16 +4087,50 @@
       requestAnimationFrame(step);
     }
 
-    // Rain launch button handler
-    function initRainButton() {
-      const btn = document.getElementById('btn-rain-launch');
-      if (!btn) return;
-      btn.addEventListener('click', () => {
-        if (rainActive) {
-          stopRain();
-        } else {
-          startRain();
+    // Inactivity detection for auto-triggered rain
+    const INACTIVITY_MS = 120000;
+    let lastInteraction = Date.now();
+    let inactivityCheckInterval = null;
+
+    function checkInactivity() {
+      if (rainActive) return;
+      if (Date.now() - lastInteraction > INACTIVITY_MS) {
+        startRain();
+      }
+    }
+
+    function resetInactivityTimer() {
+      lastInteraction = Date.now();
+      if (rainActive) {
+        stopRain();
+      }
+    }
+
+    function initInactivityDetection() {
+      inactivityCheckInterval = setInterval(checkInactivity, 5000);
+
+      canvas.addEventListener('pointerdown', resetInactivityTimer);
+      canvas.addEventListener('touchstart', resetInactivityTimer);
+      canvas.addEventListener('wheel', resetInactivityTimer);
+
+      document.addEventListener('click', (e) => {
+        if (e.target.closest('.toolbar') || e.target.closest('#emoji-picker') || e.target.closest('.toolbar-menu')) {
+          resetInactivityTimer();
         }
+      });
+
+      document.getElementById('text-input').addEventListener('input', resetInactivityTimer);
+      document.getElementById('text-input').addEventListener('keydown', resetInactivityTimer);
+
+      const colorInput = document.querySelector('input[type="color"]');
+      if (colorInput) {
+        colorInput.addEventListener('change', resetInactivityTimer);
+        colorInput.addEventListener('input', resetInactivityTimer);
+      }
+
+      const rangeInputs = document.querySelectorAll('input[type="range"]');
+      rangeInputs.forEach(input => {
+        input.addEventListener('input', resetInactivityTimer);
       });
     }
 
@@ -4843,7 +4869,7 @@
     resize();
     setLoading(true);
     initToolbarPosition();
-    initRainButton();
+    initInactivityDetection();
     loadStrokes();
     loadThreads();
     loadBalance();
