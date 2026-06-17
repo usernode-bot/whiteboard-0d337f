@@ -418,6 +418,18 @@
   </style>
 </head>
 <body class="bg-white dark:bg-zinc-900">
+  <!-- Compact balance header in top-left -->
+  <div id="balance-header" class="fixed top-3 left-3 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 z-[45] text-xs font-medium whitespace-nowrap">
+    <span>❄️</span><span id="balance-snowflakes" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">SF</span>
+    <span class="mx-2 text-zinc-300 dark:text-zinc-600">|</span>
+    <span>🪙</span><span id="balance-tokens" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">TKN</span>
+  </div>
+
+  <!-- Rain launch button in top-right -->
+  <button id="btn-rain-launch" class="fixed top-3 right-3 w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors z-[45]" title="Launch snowflake & bomb rain">
+    <span>🌨️</span>
+  </button>
+
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
   <div id="brush-cursor"></div>
@@ -921,6 +933,10 @@
     let shapeStart = null;
     let shapeEnd = null;
     function isShapeTool() { return tool === 'shape'; }
+
+    // Balance state (snowflakes and tokens)
+    let userBalance = { snowflakes: 0, tokens: 0 };
+    let lastActionTime = {}; // track action timing for deduplication
 
     // Highlight the active swatch in a popover grid (color or background).
     function syncSelectedSwatch(containerId, value) {
@@ -3741,6 +3757,194 @@
       document.getElementById('empty-state').style.display = empty ? 'flex' : 'none';
     }
 
+    // --- Balance management (snowflakes and tokens) ---
+
+    function updateBalanceDisplay() {
+      document.getElementById('balance-snowflakes').textContent = String(userBalance.snowflakes);
+      document.getElementById('balance-tokens').textContent = String(userBalance.tokens);
+    }
+
+    async function loadBalance() {
+      try {
+        const res = await fetch('/api/balance', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          userBalance = { snowflakes: data.snowflakes, tokens: data.tokens };
+          updateBalanceDisplay();
+        } else if (res.status === 404) {
+          userBalance = { snowflakes: 0, tokens: 0 };
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to load balance:', err);
+      }
+    }
+
+    async function onSnowflakeTap() {
+      const actionKey = 'snowflake_tap_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'snowflake_tap', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record snowflake tap:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
+    async function onBombExplosion() {
+      const actionKey = 'bomb_explosion_' + Date.now();
+      if (lastActionTime[actionKey]) return;
+      lastActionTime[actionKey] = true;
+
+      try {
+        const res = await fetch('/api/balance', {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'bomb_explosion', amount: 1 })
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          userBalance.snowflakes = updated.snowflakes;
+          userBalance.tokens = updated.tokens;
+          updateBalanceDisplay();
+        }
+      } catch (err) {
+        console.warn('Failed to record bomb explosion:', err);
+      }
+
+      Object.keys(lastActionTime).forEach(k => {
+        const ts = parseInt(k.split('_').pop());
+        if (Date.now() - ts > 500) delete lastActionTime[k];
+      });
+    }
+
+    // Rain animation state
+    let rainActive = false;
+    let rainSpawnRafId = null;
+    const RAIN_DURATION_MS = 15000;
+
+    function startRain() {
+      if (rainActive) return;
+      rainActive = true;
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '⏹';
+      const startTime = performance.now();
+      let lastSpawn = 0;
+      let nextInterval = 300 + Math.random() * 200;
+
+      function spawnLoop(now) {
+        if (!rainActive) return;
+        if (now - startTime < RAIN_DURATION_MS) {
+          if (now - lastSpawn >= nextInterval) {
+            lastSpawn = now;
+            nextInterval = 300 + Math.random() * 200;
+            const type = Math.random() < 0.75 ? 'snowflake' : 'bomb';
+            spawnParticle(type);
+          }
+          rainSpawnRafId = requestAnimationFrame(spawnLoop);
+        } else {
+          rainSpawnRafId = null;
+        }
+      }
+
+      rainSpawnRafId = requestAnimationFrame(spawnLoop);
+    }
+
+    function stopRain() {
+      rainActive = false;
+      if (rainSpawnRafId) {
+        cancelAnimationFrame(rainSpawnRafId);
+        rainSpawnRafId = null;
+      }
+      document.querySelectorAll('.rain-particle').forEach(el => el.remove());
+      const btn = document.getElementById('btn-rain-launch');
+      if (btn) btn.querySelector('span').textContent = '🌨️';
+    }
+
+    function spawnParticle(type) {
+      const el = document.createElement('div');
+      el.className = 'rain-particle';
+      el.style.position = 'fixed';
+      el.style.zIndex = '9999';
+      el.style.pointerEvents = 'auto';
+      el.style.cursor = 'pointer';
+      el.style.userSelect = 'none';
+      el.style.lineHeight = '1';
+
+      const fontSize = type === 'snowflake' ? (Math.random() * 125 + 25) : 48;
+      el.style.fontSize = fontSize + 'px';
+      el.textContent = type === 'snowflake' ? '❄️' : '💣';
+
+      const startX = Math.random() * window.innerWidth;
+      el.style.left = startX + 'px';
+      el.style.top = '-60px';
+
+      el.addEventListener('click', () => {
+        el.remove();
+        if (type === 'snowflake') {
+          onSnowflakeTap();
+        } else {
+          onBombExplosion();
+        }
+      });
+
+      document.body.appendChild(el);
+      animateParticle(el, startX, fontSize);
+    }
+
+    function animateParticle(el, startX, fontSize) {
+      const speed = 2 + Math.random() * 3 * (fontSize / 150);
+      const wobbleFreq = 0.03 + Math.random() * 0.02;
+      const wobbleAmp = 10 + Math.random() * 10;
+      let y = -60;
+      let frame = Math.random() * 100;
+
+      function step() {
+        if (!el.parentNode) return;
+        y += speed;
+        frame++;
+        const xOffset = Math.sin(frame * wobbleFreq) * wobbleAmp;
+        el.style.top = y + 'px';
+        el.style.left = (startX + xOffset) + 'px';
+        if (y > window.innerHeight + 60) {
+          el.remove();
+          return;
+        }
+        requestAnimationFrame(step);
+      }
+
+      requestAnimationFrame(step);
+    }
+
+    // Rain launch button handler
+    function initRainButton() {
+      const btn = document.getElementById('btn-rain-launch');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        if (rainActive) {
+          stopRain();
+        } else {
+          startRain();
+        }
+      });
+    }
+
     // --- Text tool helpers ---
 
     function openTextInput(screenX, screenY) {
@@ -4476,8 +4680,10 @@
     resize();
     setLoading(true);
     initToolbarPosition();
+    initRainButton();
     loadStrokes();
     loadThreads();
+    loadBalance();
     connectSSE();
 
     // --- Marketplace ---
