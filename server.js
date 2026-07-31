@@ -33,9 +33,13 @@ function broadcast(event, data) {
   }
 }
 
-const PUBLIC_API_PATHS = new Set(['/health']);
+const PUBLIC_API_PATHS = new Set(['/health', '/favicon.ico']);
 
 app.use(express.json({ limit: '20mb' }));
+
+// Browsers request /favicon.ico on every page load — answer before auth so it
+// never falls through to the 401 page.
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 app.use((req, res, next) => {
   const token = req.query.token || req.headers['x-usernode-token'];
