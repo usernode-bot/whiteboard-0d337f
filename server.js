@@ -24,13 +24,38 @@ const PREMIUM_BRUSHES = ALL_BRUSHES.filter((b) => b.tier === 'premium').map((b) 
 const PREMIUM_BRUSH_PRICE = parseInt(process.env.PREMIUM_BRUSH_PRICE || '500', 10);
 const PREMIUM_BRUSH_PAYEE_PUBKEY = process.env.PREMIUM_BRUSH_PAYEE_PUBKEY || '';
 
-const sseClients = new Set();
+let clientIdCounter = 0;
+const sseClients = new Map(); // clientId -> { res, username }
+const connectedUsers = new Map(); // username -> { color, count }
+const cursorMap = new Map(); // username -> { x, y, idleTimer }
 
-function broadcast(event, data) {
+const REACTION_ALLOWLIST = new Set(['🔥', '✨', '💥', '👏', '🌀']);
+
+function usernameToColor(username) {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 50%)`;
+}
+
+function broadcastAll(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of sseClients) {
+  for (const { res } of sseClients.values()) {
     res.write(msg);
   }
+}
+
+function broadcastExceptUsername(event, data, excludeUsername) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const { res, username } of sseClients.values()) {
+    if (username !== excludeUsername) res.write(msg);
+  }
+}
+
+function getPresenceList() {
+  return [...connectedUsers.entries()].map(([username, { color }]) => ({ username, color }));
 }
 
 const PUBLIC_API_PATHS = new Set(['/health']);
@@ -76,8 +101,38 @@ app.get('/api/strokes/stream', (req, res) => {
     Connection: 'keep-alive'
   });
   res.write('\n');
-  sseClients.add(res);
-  req.on('close', () => sseClients.delete(res));
+
+  const clientId = ++clientIdCounter;
+  const username = req.user.username;
+  const color = usernameToColor(username);
+
+  sseClients.set(clientId, { res, username });
+
+  if (connectedUsers.has(username)) {
+    connectedUsers.get(username).count++;
+  } else {
+    connectedUsers.set(username, { color, count: 1 });
+  }
+  broadcastAll('presence', { users: getPresenceList() });
+
+  req.on('close', () => {
+    sseClients.delete(clientId);
+
+    if (cursorMap.has(username)) {
+      clearTimeout(cursorMap.get(username).idleTimer);
+      cursorMap.delete(username);
+    }
+
+    const user = connectedUsers.get(username);
+    if (user) {
+      user.count--;
+      if (user.count <= 0) {
+        connectedUsers.delete(username);
+        broadcastAll('cursor_leave', { username });
+        broadcastAll('presence', { users: getPresenceList() });
+      }
+    }
+  });
 });
 
 app.post('/api/strokes', async (req, res) => {
@@ -92,7 +147,7 @@ app.post('/api/strokes', async (req, res) => {
     );
     const result = { ok: true, id: rows[0].id, z_index: rows[0].z_index, created_at: rows[0].created_at };
     res.json(result);
-    broadcast('stroke', {
+    broadcastAll('stroke', {
       id: rows[0].id,
       user_id: req.user.id,
       username: req.user.username,
@@ -148,7 +203,7 @@ app.patch('/api/strokes/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
     res.json({ ok: true, id: rows[0].id, z_index: rows[0].z_index });
-    broadcast('update', { id: rows[0].id, stroke_data: rows[0].stroke_data, z_index: rows[0].z_index });
+    broadcastAll('update', { id: rows[0].id, stroke_data: rows[0].stroke_data, z_index: rows[0].z_index });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -160,7 +215,7 @@ app.delete('/api/strokes/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
-    broadcast('undo', { id: parseInt(req.params.id) });
+    broadcastAll('undo', { id: parseInt(req.params.id) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -182,7 +237,7 @@ app.post('/api/strokes/truncate-after', async (req, res) => {
     }
     const ids = rows.map(r => r.id);
     res.json({ ok: true, ids });
-    broadcast('undo-batch', { ids });
+    broadcastAll('undo-batch', { ids });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -192,10 +247,44 @@ app.delete('/api/strokes', async (req, res) => {
   try {
     await pool.query('DELETE FROM strokes');
     res.json({ ok: true });
-    broadcast('clear', {});
+    broadcastAll('clear', {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.post('/api/cursor', (req, res) => {
+  const { x, y } = req.body;
+  if (typeof x !== 'number' || typeof y !== 'number') {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  const username = req.user.username;
+  const color = usernameToColor(username);
+
+  if (cursorMap.has(username)) {
+    clearTimeout(cursorMap.get(username).idleTimer);
+  }
+  const idleTimer = setTimeout(() => {
+    cursorMap.delete(username);
+    broadcastAll('cursor_leave', { username });
+  }, 15000);
+  cursorMap.set(username, { x, y, idleTimer });
+
+  broadcastExceptUsername('cursor', { username, color, x, y }, username);
+  res.json({ ok: true });
+});
+
+app.post('/api/reaction', (req, res) => {
+  const { emoji, x, y } = req.body;
+  if (!REACTION_ALLOWLIST.has(emoji)) {
+    return res.status(400).json({ error: 'Invalid emoji' });
+  }
+  if (typeof x !== 'number' || typeof y !== 'number') {
+    return res.status(400).json({ error: 'Invalid coordinates' });
+  }
+  const username = req.user.username;
+  broadcastAll('reaction', { username, emoji, x, y });
+  res.json({ ok: true });
 });
 
 // --- Comment threads ---
@@ -254,7 +343,7 @@ app.post('/api/threads', async (req, res) => {
     await client.query('COMMIT');
     const full = { ...thread, replies: [replyQ.rows[0]] };
     res.json(full);
-    broadcast('thread', full);
+    broadcastAll('thread', full);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: err.message });
@@ -280,7 +369,7 @@ app.post('/api/threads/:id/replies', async (req, res) => {
       [req.params.id, req.user.id, req.user.username, body.trim()]
     );
     res.json(rows[0]);
-    broadcast('reply', rows[0]);
+    broadcastAll('reply', rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -294,7 +383,7 @@ app.delete('/api/threads/:id', async (req, res) => {
     );
     res.json({ ok: true, deleted: result.rowCount });
     if (result.rowCount > 0) {
-      broadcast('thread-delete', { id: parseInt(req.params.id) });
+      broadcastAll('thread-delete', { id: parseInt(req.params.id) });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });

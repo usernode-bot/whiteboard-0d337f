@@ -226,13 +226,108 @@
     input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
     input[type="color"]::-webkit-color-swatch { border: 2px solid var(--swatch-border); border-radius: 6px; }
     #brush-cursor {
-      position: fixed; pointer-events: none; z-index: 40;
+      position: fixed; pointer-events: none; z-index: 41;
       border: none; border-radius: 50%;
       display: none; transform: translate(-50%, -50%);
     }
     #save-indicator { transition: opacity 0.3s; }
     canvas.panning { cursor: grab !important; }
     canvas.panning:active { cursor: grabbing !important; }
+
+    /* Remote cursors */
+    .remote-cursor {
+      position: absolute;
+      pointer-events: none;
+      transform: translate(-50%, -120%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: opacity 0.4s;
+    }
+    .cursor-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 2px white, 0 1px 4px rgba(0,0,0,0.25);
+      flex-shrink: 0;
+    }
+    .cursor-label {
+      font-size: 11px;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      color: white;
+      padding: 1px 6px;
+      border-radius: 5px;
+      white-space: nowrap;
+      line-height: 1.5;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .cursor-idle { opacity: 0.3; }
+
+    /* Who's Here strip */
+    .who-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px 3px 6px;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid #d4d4d8;
+      border-radius: 999px;
+      font-size: 12px;
+      font-family: system-ui, sans-serif;
+      font-weight: 500;
+      color: #3f3f46;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .who-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Reaction panel buttons */
+    .reaction-btn {
+      width: 2.5rem;
+      height: 2.5rem;
+      font-size: 1.25rem;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid #d4d4d8;
+      border-radius: 0.75rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.12s, box-shadow 0.12s;
+      user-select: none;
+      line-height: 1;
+      padding: 0;
+    }
+    .reaction-btn:hover { transform: scale(1.18); box-shadow: 0 3px 10px rgba(0,0,0,0.15); }
+    .reaction-btn:active { transform: scale(0.92); }
+
+    /* Reaction burst animation */
+    @keyframes reaction-burst {
+      0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.4); }
+      18%  { transform: translate(-50%, calc(-50% - 12px)) scale(1.65); }
+      100% { opacity: 0; transform: translate(-50%, calc(-50% - 85px)) scale(0.85); }
+    }
+    .reaction-burst {
+      position: absolute;
+      font-size: 2rem;
+      line-height: 1;
+      pointer-events: none;
+      animation: reaction-burst 2.5s ease-out forwards;
+    }
+
+    /* Icon palette */
+    .icon-palette-btn { transition: all 0.15s; color: #3f3f46; }
+    .icon-palette-btn:hover { background: rgba(124, 58, 237, 0.1); }
+    .icon-palette-btn.active { background: rgba(124, 58, 237, 0.15); box-shadow: 0 0 0 2px #7c3aed; }
+
     #text-input {
       position: fixed;
       background: transparent;
@@ -412,6 +507,7 @@
       .labeled-tool .tool-label { font-size: 12px !important; }
       .desktop-label { display: none; }
       input[type="range"] { width: 60px !important; }
+      .reaction-btn { width: 2rem !important; height: 2rem !important; font-size: 1rem !important; }
       /* Vertical separators look out of place once buttons wrap — hide them. */
       .toolbar > .w-px.h-8 { display: none !important; }
     }
@@ -432,6 +528,10 @@
 
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
+
+  <!-- Overlay for remote cursors and reaction bursts (pointer-events: none) -->
+  <div id="cursor-overlay" style="position:fixed;inset:0;z-index:38;pointer-events:none;overflow:hidden"></div>
+
   <div id="brush-cursor"></div>
 
   <div id="empty-state" aria-hidden="true">
@@ -523,6 +623,9 @@
           </button>
         </div>
       </div>
+      <button id="btn-bucket" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Fill">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.5 8.5a5.5 5.5 0 0 0 7.78 7.78L19 11Z"/><path d="m20 12 2 2a3 3 0 0 1 0 4.24 3 3 0 0 1-4.24 0L16 17"/></svg>
+      </button>
       <button id="btn-text" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base" title="Text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
       </button>
@@ -531,6 +634,9 @@
       </button>
       <button id="btn-move" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Move / Zoom">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+      </button>
+      <button id="btn-icons" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Icons">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
       </button>
       <button id="btn-emoji" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Emoji">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -679,6 +785,23 @@
     <button id="btn-zoom-out" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-lg" title="Zoom out">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
     </button>
+  </div>
+
+  <!-- Icon palette popover -->
+  <div id="icon-palette" class="toolbar fixed left-1/2 -translate-x-1/2 bg-white/90 border border-zinc-300 rounded-2xl px-3 py-3 z-50 shadow-lg hidden" style="top: 4.5rem;">
+    <div id="icon-palette-grid" class="grid grid-cols-4 gap-1.5"></div>
+  </div>
+
+  <!-- Who's Here strip — bottom-center, above zoom indicator -->
+  <div id="who-strip" style="position:fixed;bottom:3.25rem;left:50%;transform:translateX(-50%);z-index:50;display:none;flex-direction:row;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 8rem)"></div>
+
+  <!-- Reaction panel — right edge, vertically centered -->
+  <div id="reaction-panel" style="position:fixed;right:12px;top:50%;transform:translateY(-50%);z-index:50;display:flex;flex-direction:column;gap:8px">
+    <button class="reaction-btn" data-emoji="🔥" title="Fire">🔥</button>
+    <button class="reaction-btn" data-emoji="✨" title="Sparkles">✨</button>
+    <button class="reaction-btn" data-emoji="💥" title="Boom">💥</button>
+    <button class="reaction-btn" data-emoji="👏" title="Clap">👏</button>
+    <button class="reaction-btn" data-emoji="🌀" title="Swirl">🌀</button>
   </div>
 
   <div id="color-popover" class="panel-surface hidden fixed rounded-xl p-3 z-[60] w-56 max-h-[70vh] overflow-y-auto">
@@ -870,9 +993,87 @@
   </div>
 
   <script>
+    // ---- ICONS CONSTANT ----
+    const ICONS = {
+      star: {
+        label: 'Star', fill: true,
+        path: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'
+      },
+      heart: {
+        label: 'Heart', fill: true,
+        path: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z'
+      },
+      check: {
+        label: 'Check', fill: false,
+        path: 'M20 6 9 17l-5-5'
+      },
+      cross: {
+        label: 'Cross', fill: false,
+        path: 'M18 6 6 18M6 6l12 12'
+      },
+      'arrow-up': {
+        label: 'Arrow Up', fill: false,
+        path: 'M12 19V5M5 12l7-7 7 7'
+      },
+      'arrow-right': {
+        label: 'Arrow Right', fill: false,
+        path: 'M5 12h14M12 5l7 7-7 7'
+      },
+      lightning: {
+        label: 'Lightning', fill: true,
+        path: 'M13 2 3 14h9l-1 8 10-12h-9l1-8z'
+      },
+      circle: {
+        label: 'Circle', fill: false,
+        path: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z'
+      },
+      square: {
+        label: 'Square', fill: false,
+        path: 'M3 3h18v18H3z'
+      },
+      triangle: {
+        label: 'Triangle', fill: true,
+        path: 'M12 2l10 19H2z'
+      },
+      'thumbs-up': {
+        label: 'Thumbs Up', fill: false,
+        path: 'M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3'
+      },
+      smiley: {
+        label: 'Smiley', fill: false,
+        path: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01'
+      },
+      fire: {
+        label: 'Fire', fill: true,
+        path: 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'
+      },
+      flag: {
+        label: 'Flag', fill: false,
+        path: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7'
+      },
+      lock: {
+        label: 'Lock', fill: false,
+        path: 'M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4'
+      },
+      warning: {
+        label: 'Warning', fill: false,
+        path: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01'
+      }
+    };
+
+    // ---- INIT ----
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
+
+    // Decode own username from JWT for reaction deduplication
+    let myUsername = '';
+    try {
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        myUsername = payload.username || '';
+      }
+    } catch (e) {}
 
     // Decode the username from the JWT payload (label only — not trusted for
     // auth; the server re-verifies the token on every write). Used to tag
@@ -896,6 +1097,7 @@
       return document.documentElement.classList.contains('dark');
     }
 
+    // ---- STATE ----
     let strokes = [];
     // Action-history undo/redo. Each entry: {type:'add'|'delete'|'move'|'reorder', id, ...}
     let undoStack = [];
@@ -944,6 +1146,8 @@
     let strokeWidth = 3;
     let isDrawing = false;
     const brushCursor = document.getElementById('brush-cursor');
+
+    const FILL_TOLERANCE = 32;
 
     // Shape tool state. When `tool === 'shape'`, `shapeType` selects which
     // primitive is drawn (line | rect | circle). A shape is defined by the
@@ -1025,6 +1229,32 @@
 
     // Spacebar-hold for temporary move mode
     let previousTool = null;
+
+    // Presence state
+    const remoteCursors = new Map(); // username -> { el, canvasX, canvasY, idleTimer }
+    let lastCursorCanvasX = 0;
+    let lastCursorCanvasY = 0;
+    let lastCursorSendTime = 0;
+
+    // Icon tool state
+    let selectedStrokeId = null;   // id of currently selected icon
+    let selectedIconId = null;     // icon type key chosen from palette
+    let iconDragMode = null;       // 'move' | 'resize' | null
+    let iconDragStartWorld = null; // {x, y} world pos at drag start
+    let iconDragStartData = null;  // snapshot of {x, y, size} at drag start
+    let iconResizeCenterWorld = null; // world center of icon being resized
+
+    // ---- UTILITY ----
+    function usernameToColor(username) {
+      let hash = 0;
+      for (let i = 0; i < username.length; i++) {
+        hash = (hash * 31 + username.charCodeAt(i)) | 0;
+      }
+      const hue = Math.abs(hash) % 360;
+      return `hsl(${hue}, 70%, 50%)`;
+    }
+    // Note: escapeHtml is defined later in this file (used here and by the
+    // comment-thread / history features); function declarations are hoisted.
 
     // Emoji tool
     const EMOJI_SIZE = 32;
@@ -1191,6 +1421,13 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
+    function hexToRgbaArray(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b, 255];
+    }
+
     function updateBrushCursor() {
       if (tool === 'text' || tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
@@ -1212,15 +1449,21 @@
       }
     }
 
-    function moveBrushCursor(x, y) {
-      brushCursor.style.left = x + 'px';
-      brushCursor.style.top = y + 'px';
+    function hslToHex(h, s, l) {
+      s /= 100; l /= 100;
+      const a = s * Math.min(l, 1 - l);
+      function f(n) {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+      }
+      return '#' + f(0) + f(8) + f(4);
     }
 
     function showBrushCursor(show) {
-      if (tool === 'move') {
+      if (tool === 'move' || tool === 'bucket' || tool === 'icon') {
         brushCursor.style.display = 'none';
-        canvas.style.cursor = 'grab';
+        if (tool === 'move') canvas.style.cursor = 'grab';
         return;
       }
       if (tool === 'text') {
@@ -1284,10 +1527,39 @@
       for (const s of strokes) {
         const item = s.stroke_data || s;
         if (item.hidden) continue; // hidden layers are skipped (toggled in panel)
-        drawItem(item);
+        if (item.type === 'fill') {
+          applyFill(item);
+        } else {
+          drawItem(item);
+        }
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      updateRemoteCursorPositions();
       if (!noSelection) drawSelectionOverlay();
+
+      // Draw selection ring and resize handle for a selected icon (icon tool).
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const tl = worldToScreen(sd.x - sd.size / 2, sd.y - sd.size / 2);
+            const br = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            const w = br.x - tl.x;
+            const h = br.y - tl.y;
+
+            ctx.save();
+            ctx.strokeStyle = '#7c3aed';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(tl.x - 3, tl.y - 3, w + 6, h + 6);
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#7c3aed';
+            ctx.fillRect(br.x - 4, br.y - 4, 8, 8);
+            ctx.restore();
+          }
+        }
+      }
       if (typeof updateEmptyState === 'function') updateEmptyState();
       renderLayerPanel();
       updatePins();
@@ -1431,6 +1703,25 @@
     }
 
     function drawStroke(s) {
+      if (s.type === 'icon') {
+        if (!ICONS[s.iconId]) return;
+        ctx.save();
+        ctx.translate(s.x - s.size / 2, s.y - s.size / 2);
+        ctx.scale(s.size / 24, s.size / 24);
+        const p = new Path2D(ICONS[s.iconId].path);
+        if (ICONS[s.iconId].fill) {
+          ctx.fillStyle = s.color;
+          ctx.fill(p);
+        } else {
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke(p);
+        }
+        ctx.restore();
+        return;
+      }
       if (s.type === 'text') {
         ctx.font = s.fontSize + 'px ' + (s.fontFamily || 'sans-serif');
         ctx.globalCompositeOperation = 'source-over';
@@ -2125,6 +2416,225 @@
       return screenToWorld(sx, sy);
     }
 
+    // ---- PRESENCE ----
+    function updateRemoteCursorPositions() {
+      for (const entry of remoteCursors.values()) {
+        const { x, y } = worldToScreen(entry.canvasX, entry.canvasY);
+        entry.el.style.left = x + 'px';
+        entry.el.style.top = y + 'px';
+      }
+    }
+
+    function upsertRemoteCursor(username, color, canvasX, canvasY) {
+      const overlay = document.getElementById('cursor-overlay');
+      let entry = remoteCursors.get(username);
+
+      if (!entry) {
+        const el = document.createElement('div');
+        el.className = 'remote-cursor';
+        el.innerHTML =
+          `<div class="cursor-dot" style="background:${color}"></div>` +
+          `<div class="cursor-label" style="background:${color}">${escapeHtml(username)}</div>`;
+        overlay.appendChild(el);
+        entry = { el, canvasX, canvasY, idleTimer: null };
+        remoteCursors.set(username, entry);
+      } else {
+        entry.canvasX = canvasX;
+        entry.canvasY = canvasY;
+        entry.el.classList.remove('cursor-idle');
+      }
+
+      const { x, y } = worldToScreen(canvasX, canvasY);
+      entry.el.style.left = x + 'px';
+      entry.el.style.top = y + 'px';
+
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      entry.idleTimer = setTimeout(() => {
+        if (entry.el) entry.el.classList.add('cursor-idle');
+      }, 5000);
+    }
+
+    function removeRemoteCursor(username) {
+      const entry = remoteCursors.get(username);
+      if (entry) {
+        if (entry.idleTimer) clearTimeout(entry.idleTimer);
+        entry.el.remove();
+        remoteCursors.delete(username);
+      }
+    }
+
+    function renderWhoStrip(users) {
+      const strip = document.getElementById('who-strip');
+      strip.innerHTML = '';
+      if (users.length < 2) {
+        strip.style.display = 'none';
+        return;
+      }
+      strip.style.display = 'flex';
+      for (const { username, color } of users) {
+        const pill = document.createElement('div');
+        pill.className = 'who-pill';
+        pill.innerHTML =
+          `<span class="who-dot" style="background:${color}"></span>` +
+          `<span>${escapeHtml(username)}</span>`;
+        strip.appendChild(pill);
+      }
+    }
+
+    function spawnReactionBurst(emoji, canvasX, canvasY) {
+      const { x, y } = worldToScreen(canvasX, canvasY);
+      const overlay = document.getElementById('cursor-overlay');
+      const el = document.createElement('div');
+      el.className = 'reaction-burst';
+      el.textContent = emoji;
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      overlay.appendChild(el);
+      el.addEventListener('animationend', () => el.remove(), { once: true });
+    }
+
+    function sendCursorUpdate(screenX, screenY) {
+      const now = Date.now();
+      if (now - lastCursorSendTime < 50) return;
+      lastCursorSendTime = now;
+      const pos = screenToWorld(screenX, screenY);
+      lastCursorCanvasX = pos.x;
+      lastCursorCanvasY = pos.y;
+      fetch('/api/cursor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ x: pos.x, y: pos.y })
+      }).catch(() => {});
+    }
+
+    function moveBrushCursor(x, y) {
+      brushCursor.style.left = x + 'px';
+      brushCursor.style.top = y + 'px';
+    }
+
+    // ---- FILL FUNCTIONS ----
+    function applyFill(data) {
+      const savedScale = scale;
+      const savedOffX = offsetX;
+      const savedOffY = offsetY;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+      const sx = Math.round(data.x * savedScale + savedOffX);
+      const sy = Math.round(data.y * savedScale + savedOffY);
+      const cx = Math.max(0, Math.min(canvas.width - 1, sx));
+      const cy = Math.max(0, Math.min(canvas.height - 1, sy));
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const fillRgba = hexToRgbaArray(data.color);
+      const idx = (cy * canvas.width + cx) * 4;
+      const targetRgba = [
+        imageData.data[idx],
+        imageData.data[idx + 1],
+        imageData.data[idx + 2],
+        imageData.data[idx + 3]
+      ];
+
+      if (!colorsMatch(targetRgba, fillRgba, 0)) {
+        floodFill(imageData, cx, cy, targetRgba, fillRgba, data.tolerance != null ? data.tolerance : FILL_TOLERANCE);
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      ctx.setTransform(savedScale, 0, 0, savedScale, savedOffX, savedOffY);
+    }
+
+    function colorsMatch(a, b, tol) {
+      return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) + Math.abs(a[3] - b[3]) <= tol;
+    }
+
+    function floodFill(imageData, startX, startY, targetRgba, fillRgba, tol) {
+      const w = imageData.width;
+      const h = imageData.height;
+      const d = imageData.data;
+      const visited = new Uint8Array(w * h);
+      const stack = [[startX, startY]];
+
+      function pixelAt(x, y) {
+        const i = (y * w + x) * 4;
+        return [d[i], d[i + 1], d[i + 2], d[i + 3]];
+      }
+
+      function setPixel(x, y) {
+        const i = (y * w + x) * 4;
+        d[i] = fillRgba[0];
+        d[i + 1] = fillRgba[1];
+        d[i + 2] = fillRgba[2];
+        d[i + 3] = fillRgba[3];
+      }
+
+      while (stack.length > 0) {
+        const [cx, cy] = stack.pop();
+        if (cx < 0 || cx >= w || cy < 0 || cy >= h) continue;
+        if (visited[cy * w + cx]) continue;
+        if (!colorsMatch(pixelAt(cx, cy), targetRgba, tol)) continue;
+
+        let lx = cx;
+        while (lx > 0 && !visited[cy * w + (lx - 1)] && colorsMatch(pixelAt(lx - 1, cy), targetRgba, tol)) {
+          lx--;
+        }
+        let rx = cx;
+        while (rx < w - 1 && !visited[cy * w + (rx + 1)] && colorsMatch(pixelAt(rx + 1, cy), targetRgba, tol)) {
+          rx++;
+        }
+
+        for (let x = lx; x <= rx; x++) {
+          setPixel(x, cy);
+          visited[cy * w + x] = 1;
+
+          if (cy > 0 && !visited[(cy - 1) * w + x] && colorsMatch(pixelAt(x, cy - 1), targetRgba, tol)) {
+            stack.push([x, cy - 1]);
+          }
+          if (cy < h - 1 && !visited[(cy + 1) * w + x] && colorsMatch(pixelAt(x, cy + 1), targetRgba, tol)) {
+            stack.push([x, cy + 1]);
+          }
+        }
+      }
+    }
+
+    async function executeFill(e) {
+      let sx, sy;
+      if (e.touches && e.touches.length > 0) {
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+      } else {
+        sx = e.clientX;
+        sy = e.clientY;
+      }
+      sx = Math.round(sx);
+      sy = Math.round(sy);
+      sx = Math.max(0, Math.min(canvas.width - 1, sx));
+      sy = Math.max(0, Math.min(canvas.height - 1, sy));
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const idx = (sy * canvas.width + sx) * 4;
+      const targetRgba = [
+        imageData.data[idx],
+        imageData.data[idx + 1],
+        imageData.data[idx + 2],
+        imageData.data[idx + 3]
+      ];
+      const fillRgba = hexToRgbaArray(strokeColor);
+
+      if (colorsMatch(targetRgba, fillRgba, FILL_TOLERANCE)) return;
+
+      floodFill(imageData, sx, sy, targetRgba, fillRgba, FILL_TOLERANCE);
+      ctx.putImageData(imageData, 0, 0);
+
+      const worldPos = screenToWorld(sx, sy);
+      const strokeData = { type: 'fill', x: worldPos.x, y: worldPos.y, color: strokeColor, tolerance: FILL_TOLERANCE };
+      const saved = await saveStroke(strokeData);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: strokeData });
+        redoStack = [];
+      }
+    }
+
+    // ---- ZOOM / PAN ----
     function getScreenPos(e) {
       if (e.touches && e.touches.length > 0) {
         return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -2168,6 +2678,7 @@
       showStatus('View reset');
     }
 
+    // ---- TOOL MANAGEMENT ----
     function setActiveTool(newTool) {
       if (tool === 'text' && newTool !== 'text') {
         const textInput = document.getElementById('text-input');
@@ -2179,6 +2690,8 @@
       document.getElementById('btn-pen').classList.toggle('active', newTool === 'pen');
       document.getElementById('btn-rainbow').classList.toggle('active', newTool === 'rainbow');
       document.getElementById('btn-eraser').classList.toggle('active', newTool === 'eraser');
+      document.getElementById('btn-bucket').classList.toggle('active', newTool === 'bucket');
+      document.getElementById('btn-icons').classList.toggle('active', newTool === 'icon');
       document.getElementById('btn-text').classList.toggle('active', newTool === 'text');
       document.getElementById('btn-select').classList.toggle('active', newTool === 'select');
       document.getElementById('btn-move').classList.toggle('active', newTool === 'move');
@@ -2189,10 +2702,26 @@
       if (newTool !== 'shape') hideShapesPopover();
       if (newTool !== 'comment') hideComposer();
       if (newTool !== 'text') hideTextPopover(); else showTextPopover();
+
+      if (newTool !== 'icon') {
+        selectedStrokeId = null;
+        iconDragMode = null;
+        document.getElementById('icon-palette').classList.add('hidden');
+        redrawAll();
+      }
+
       if (newTool === 'move') {
         canvas.style.cursor = 'grab';
         brushCursor.style.display = 'none';
         canvas.classList.add('panning');
+      } else if (newTool === 'bucket') {
+        canvas.style.cursor = 'crosshair';
+        brushCursor.style.display = 'none';
+        canvas.classList.remove('panning');
+      } else if (newTool === 'icon') {
+        canvas.style.cursor = 'crosshair';
+        brushCursor.style.display = 'none';
+        canvas.classList.remove('panning');
       } else if (newTool === 'select') {
         canvas.style.cursor = 'default';
         brushCursor.style.display = 'none';
@@ -2216,6 +2745,172 @@
       } else {
         canvas.classList.remove('panning');
         updateBrushCursor();
+      }
+    }
+
+    // ---- ICON CURSOR FEEDBACK ----
+    function updateIconCursor(cx, cy) {
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const hScreen = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            if (Math.abs(cx - hScreen.x) <= 10 && Math.abs(cy - hScreen.y) <= 10) {
+              canvas.style.cursor = 'nwse-resize';
+              return;
+            }
+          }
+        }
+      }
+      const wp = screenToWorld(cx, cy);
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i];
+        const sd = s.stroke_data || s;
+        if (sd.type !== 'icon' || !ICONS[sd.iconId]) continue;
+        const half = sd.size / 2;
+        if (wp.x >= sd.x - half && wp.x <= sd.x + half &&
+            wp.y >= sd.y - half && wp.y <= sd.y + half) {
+          canvas.style.cursor = 'move';
+          return;
+        }
+      }
+      canvas.style.cursor = 'crosshair';
+    }
+
+    // ---- ICON PLACEMENT / INTERACTION ----
+    async function placeIcon(wx, wy) {
+      const strokeData = {
+        type: 'icon',
+        iconId: selectedIconId,
+        x: wx,
+        y: wy,
+        size: 48,
+        color: strokeColor
+      };
+      const saved = await saveStroke(strokeData);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: strokeData });
+        redoStack = [];
+        redrawAll();
+      }
+    }
+
+    function handleIconMousedown(clientX, clientY) {
+      const wp = screenToWorld(clientX, clientY);
+
+      // 1. Check resize handle of currently selected icon
+      if (selectedStrokeId !== null) {
+        const sel = strokes.find(s => s.id === selectedStrokeId);
+        if (sel) {
+          const sd = sel.stroke_data || sel;
+          if (sd.type === 'icon') {
+            const hScreen = worldToScreen(sd.x + sd.size / 2, sd.y + sd.size / 2);
+            if (Math.abs(clientX - hScreen.x) <= 10 && Math.abs(clientY - hScreen.y) <= 10) {
+              iconDragMode = 'resize';
+              iconResizeCenterWorld = { x: sd.x, y: sd.y };
+              iconDragStartData = { x: sd.x, y: sd.y, size: sd.size };
+              canvas.style.cursor = 'nwse-resize';
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Hit test all icons (reverse = top-most first)
+      for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i];
+        const sd = s.stroke_data || s;
+        if (sd.type !== 'icon' || !ICONS[sd.iconId]) continue;
+        const half = sd.size / 2;
+        if (wp.x >= sd.x - half && wp.x <= sd.x + half &&
+            wp.y >= sd.y - half && wp.y <= sd.y + half) {
+          selectedStrokeId = s.id;
+          iconDragMode = 'move';
+          iconDragStartWorld = { x: wp.x, y: wp.y };
+          iconDragStartData = { x: sd.x, y: sd.y, size: sd.size };
+          canvas.style.cursor = 'grabbing';
+          redrawAll();
+          return;
+        }
+      }
+
+      // 3. No hit — deselect and place new icon
+      selectedStrokeId = null;
+      redrawAll();
+
+      if (!selectedIconId) {
+        showStatus('Select an icon first');
+        return;
+      }
+      placeIcon(wp.x, wp.y);
+    }
+
+    function handleIconMousemove(clientX, clientY) {
+      if (!iconDragMode || selectedStrokeId === null) return;
+      const wp = screenToWorld(clientX, clientY);
+      const entry = strokes.find(s => s.id === selectedStrokeId);
+      if (!entry) return;
+      const sd = entry.stroke_data || entry;
+
+      if (iconDragMode === 'move') {
+        const dx = wp.x - iconDragStartWorld.x;
+        const dy = wp.y - iconDragStartWorld.y;
+        sd.x = iconDragStartData.x + dx;
+        sd.y = iconDragStartData.y + dy;
+      } else if (iconDragMode === 'resize') {
+        const dist = Math.sqrt(
+          (wp.x - iconResizeCenterWorld.x) ** 2 +
+          (wp.y - iconResizeCenterWorld.y) ** 2
+        );
+        sd.size = Math.max(12, Math.min(256, dist * Math.SQRT2));
+      }
+      redrawAll();
+    }
+
+    async function handleIconMouseup() {
+      if (!iconDragMode || selectedStrokeId === null) {
+        iconDragMode = null;
+        return;
+      }
+      iconDragMode = null;
+      canvas.style.cursor = 'crosshair';
+
+      const entry = strokes.find(s => s.id === selectedStrokeId);
+      if (entry) {
+        const sd = entry.stroke_data || entry;
+        const ok = await saveIconUpdate(selectedStrokeId, sd);
+        if (!ok && iconDragStartData) {
+          sd.x = iconDragStartData.x;
+          sd.y = iconDragStartData.y;
+          sd.size = iconDragStartData.size;
+          redrawAll();
+        }
+      }
+    }
+
+    async function saveIconUpdate(strokeId, strokeData) {
+      try {
+        const res = await fetch('/api/strokes/' + strokeId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ stroke_data: strokeData })
+        });
+        if (res.status === 403) {
+          showStatus('Not your icon to move');
+          loadStrokes();
+          return false;
+        }
+        if (res.status === 404) {
+          showStatus('Icon no longer exists');
+          loadStrokes();
+          return false;
+        }
+        return res.ok;
+      } catch (err) {
+        console.error('Update icon failed:', err);
+        showStatus('Update failed');
+        return false;
       }
     }
 
@@ -2253,6 +2948,7 @@
       setActiveTool('pen');
     }
 
+    // ---- PINCH HELPERS ----
     function getPinchDist(t1, t2) {
       const dx = t1.clientX - t2.clientX;
       const dy = t1.clientY - t2.clientY;
@@ -2267,6 +2963,7 @@
       return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
     }
 
+    // ---- DRAWING ----
     function startDraw(e) {
       if (e.target.closest('.toolbar')) return;
       // Freehand tools and the shape tool draw here. Eraser deletes whole
@@ -2489,7 +3186,7 @@
       redrawAll();
     }
 
-    // --- Mouse event listeners ---
+    // ---- MOUSE EVENT LISTENERS ----
 
     // Stylus pressure capture. Pointer events fire alongside mouse events; we
     // only stash pressure for actual pens so the mouse path keeps using the
@@ -2502,7 +3199,6 @@
 
     canvas.addEventListener('mousedown', (e) => {
       if (e.target.closest('.toolbar')) return;
-      // Middle mouse button always pans
       if (e.button === 1) {
         e.preventDefault();
         isPanning = true;
@@ -2513,7 +3209,6 @@
         canvas.style.cursor = 'grabbing';
         return;
       }
-      // Left click in move mode: pan
       if (tool === 'move' && e.button === 0) {
         e.preventDefault();
         isPanning = true;
@@ -2522,6 +3217,16 @@
         panStartOffsetX = offsetX;
         panStartOffsetY = offsetY;
         canvas.style.cursor = 'grabbing';
+        return;
+      }
+      if (tool === 'bucket' && e.button === 0) {
+        e.preventDefault();
+        executeFill(e);
+        return;
+      }
+      if (tool === 'icon' && e.button === 0) {
+        e.preventDefault();
+        handleIconMousedown(e.clientX, e.clientY);
         return;
       }
       // Emoji tool: don't start a stroke on mousedown; placement happens on pointerup
@@ -2579,13 +3284,22 @@
     });
 
     canvas.addEventListener('mousemove', (e) => {
-      if (tool !== 'move' && tool !== 'select') {
+      if (tool !== 'move' && tool !== 'select' && tool !== 'bucket' && tool !== 'icon') {
         moveBrushCursor(e.clientX, e.clientY);
       }
+      sendCursorUpdate(e.clientX, e.clientY);
       if (isPanning) {
         offsetX = panStartOffsetX + (e.clientX - panStartX);
         offsetY = panStartOffsetY + (e.clientY - panStartY);
         redrawAll();
+        return;
+      }
+      if (iconDragMode) {
+        handleIconMousemove(e.clientX, e.clientY);
+        return;
+      }
+      if (tool === 'icon') {
+        updateIconCursor(e.clientX, e.clientY);
         return;
       }
       if (isResizingLayer) {
@@ -2616,6 +3330,10 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (iconDragMode) {
+        handleIconMouseup();
+        return;
+      }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) {
@@ -2639,6 +3357,10 @@
         canvas.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
         return;
       }
+      if (iconDragMode) {
+        handleIconMouseup();
+        return;
+      }
       if (isResizingLayer) { endResize(); return; }
       if (isDraggingLayer) { endLayerDrag(); return; }
       if (isErasing) {
@@ -2658,6 +3380,10 @@
     canvas.addEventListener('mouseenter', (e) => {
       if (tool === 'move') {
         canvas.style.cursor = 'grab';
+      } else if (tool === 'bucket') {
+        canvas.style.cursor = 'crosshair';
+      } else if (tool === 'icon') {
+        updateIconCursor(e.clientX, e.clientY);
       } else {
         updateBrushCursor();
         showBrushCursor(true);
@@ -2665,7 +3391,6 @@
       }
     });
 
-    // Wheel: pinch-to-zoom (ctrlKey) or trackpad pan (no ctrlKey)
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
@@ -2688,14 +3413,12 @@
         }
         zoomAtPoint(e.clientX, e.clientY, newScale);
       } else {
-        // Two-finger scroll / trackpad pan / regular mouse wheel
         offsetX -= e.deltaX;
         offsetY -= e.deltaY;
         redrawAll();
       }
     }, { passive: false });
 
-    // Double-click to reset view when in move mode
     canvas.addEventListener('dblclick', (e) => {
       if (tool === 'move') {
         e.preventDefault();
@@ -2703,7 +3426,7 @@
       }
     });
 
-    // --- Touch event listeners ---
+    // ---- TOUCH EVENT LISTENERS ----
 
     canvas.addEventListener('touchstart', (e) => {
       if (e.target.closest('.toolbar')) return;
@@ -2751,6 +3474,22 @@
           panStartY = e.touches[0].clientY;
           panStartOffsetX = offsetX;
           panStartOffsetY = offsetY;
+        }
+        return;
+      }
+
+      if (tool === 'bucket') {
+        if (e.touches.length === 1) {
+          e.preventDefault();
+          executeFill(e);
+        }
+        return;
+      }
+
+      if (tool === 'icon') {
+        e.preventDefault();
+        if (e.touches.length === 1) {
+          handleIconMousedown(e.touches[0].clientX, e.touches[0].clientY);
         }
         return;
       }
@@ -2831,6 +3570,7 @@
       if (tool === 'move') {
         e.preventDefault();
         if (e.touches.length === 1 && isPanning) {
+          sendCursorUpdate(e.touches[0].clientX, e.touches[0].clientY);
           offsetX = panStartOffsetX + (e.touches[0].clientX - panStartX);
           offsetY = panStartOffsetY + (e.touches[0].clientY - panStartY);
           redrawAll();
@@ -2859,9 +3599,17 @@
         return;
       }
 
-      // Drawing mode
+      if (tool === 'icon') {
+        e.preventDefault();
+        if (e.touches.length === 1 && iconDragMode) {
+          handleIconMousemove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        return;
+      }
+
       if (e.touches.length === 1) {
         moveBrushCursor(e.touches[0].clientX, e.touches[0].clientY);
+        sendCursorUpdate(e.touches[0].clientX, e.touches[0].clientY);
         moveDraw(e);
       }
     }, { passive: false });
@@ -2875,6 +3623,11 @@
       }
       if (tool === 'move') {
         isPanning = false;
+        return;
+      }
+      if (tool === 'bucket') return;
+      if (tool === 'icon') {
+        if (iconDragMode) handleIconMouseup();
         return;
       }
       if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
@@ -2901,6 +3654,11 @@
         isPanning = false;
         return;
       }
+      if (tool === 'bucket') return;
+      if (tool === 'icon') {
+        iconDragMode = null;
+        return;
+      }
       if (tool === 'select') { if (isResizingLayer) endResize(); else endLayerDrag(); return; }
       if (tool === 'eraser') {
         if (eraserMode === 'stroke' || eraserMode === 'layer') {
@@ -2914,7 +3672,6 @@
       endDraw(e);
     }, { passive: false });
 
-    // Prevent iOS Safari gesture zoom
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('gesturechange', (e) => e.preventDefault());
 
@@ -2935,6 +3692,24 @@
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
     document.getElementById('btn-rainbow').addEventListener('click', () => setActiveTool('rainbow'));
     document.getElementById('btn-eraser').addEventListener('click', () => setActiveTool('eraser'));
+    document.getElementById('btn-bucket').addEventListener('click', () => setActiveTool('bucket'));
+
+    document.getElementById('btn-icons').addEventListener('click', () => {
+      if (tool === 'icon') {
+        document.getElementById('icon-palette').classList.toggle('hidden');
+      } else {
+        setActiveTool('icon');
+        document.getElementById('icon-palette').classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('color-picker').addEventListener('input', (e) => {
+      strokeColor = e.target.value;
+      if (tool === 'eraser') {
+        setActiveTool('pen');
+      }
+    });
+
     document.getElementById('btn-text').addEventListener('click', () => {
       // Re-clicking while already on the text tool toggles the options pop-up.
       if (tool === 'text') {
@@ -3799,6 +4574,28 @@
         e.preventDefault();
         resetView();
       }
+      // Escape: cancel icon drag or close palette
+      if (e.key === 'Escape') {
+        if (iconDragMode && selectedStrokeId !== null) {
+          const entry = strokes.find(s => s.id === selectedStrokeId);
+          if (entry && iconDragStartData) {
+            const sd = entry.stroke_data || entry;
+            sd.x = iconDragStartData.x;
+            sd.y = iconDragStartData.y;
+            sd.size = iconDragStartData.size;
+          }
+          iconDragMode = null;
+          canvas.style.cursor = 'crosshair';
+          redrawAll();
+          e.preventDefault();
+          return;
+        }
+        if (!document.getElementById('icon-palette').classList.contains('hidden')) {
+          document.getElementById('icon-palette').classList.add('hidden');
+          e.preventDefault();
+          return;
+        }
+      }
       // Delete / Backspace removes the selected layer
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLayer) {
         e.preventDefault();
@@ -3818,6 +4615,31 @@
         setActiveTool(previousTool);
         previousTool = null;
       }
+    });
+
+    // Close icon palette when clicking outside
+    document.addEventListener('click', (e) => {
+      const palette = document.getElementById('icon-palette');
+      if (!palette.classList.contains('hidden')) {
+        if (!e.target.closest('#icon-palette') && !e.target.closest('#btn-icons')) {
+          palette.classList.add('hidden');
+        }
+      }
+    });
+
+    // Reaction panel handlers
+    document.querySelectorAll('.reaction-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const emoji = btn.dataset.emoji;
+        const x = lastCursorCanvasX;
+        const y = lastCursorCanvasY;
+        spawnReactionBurst(emoji, x, y);
+        fetch('/api/reaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ emoji, x, y })
+        }).catch(() => {});
+      });
     });
 
     // Home button and zoom indicator click handlers
@@ -4538,6 +5360,9 @@
         if (!res.ok) return;
         const data = await res.json();
         strokes = data.strokes || [];
+        redoStack = [];
+        selectedStrokeId = null;
+        iconDragMode = null;
         undoStack = [];
         redoActions = [];
         updateUndoRedoButtons();
@@ -4585,6 +5410,10 @@
         const data = JSON.parse(e.data);
         const idx = strokes.findIndex(s => s.id === data.id);
         if (idx !== -1) {
+          if (strokes[idx].id === selectedStrokeId) {
+            selectedStrokeId = null;
+            iconDragMode = null;
+          }
           if (selectedLayer && selectedLayer.id === data.id) deselectLayer();
           strokes.splice(idx, 1);
           // Remote single-step undo changed the committed history; local
@@ -4615,6 +5444,9 @@
 
       es.addEventListener('clear', () => {
         strokes = [];
+        redoStack = [];
+        selectedStrokeId = null;
+        iconDragMode = null;
         undoStack = [];
         redoActions = [];
         updateUndoRedoButtons();
@@ -4657,11 +5489,63 @@
         }
       });
 
+      es.addEventListener('presence', (e) => {
+        const data = JSON.parse(e.data);
+        renderWhoStrip(data.users);
+        for (const username of remoteCursors.keys()) {
+          if (!data.users.some(u => u.username === username)) {
+            removeRemoteCursor(username);
+          }
+        }
+      });
+
+      es.addEventListener('cursor', (e) => {
+        const { username, color, x, y } = JSON.parse(e.data);
+        upsertRemoteCursor(username, color, x, y);
+      });
+
+      es.addEventListener('cursor_leave', (e) => {
+        const { username } = JSON.parse(e.data);
+        removeRemoteCursor(username);
+      });
+
+      es.addEventListener('reaction', (e) => {
+        const { username, emoji, x, y } = JSON.parse(e.data);
+        if (username === myUsername) return;
+        spawnReactionBurst(emoji, x, y);
+      });
+
       es.onerror = () => {
         es.close();
         setTimeout(connectSSE, 3000);
       };
     }
+
+    // ---- BUILD ICON PALETTE ----
+    (function buildPalette() {
+      const grid = document.getElementById('icon-palette-grid');
+      for (const [id, icon] of Object.entries(ICONS)) {
+        const btn = document.createElement('button');
+        btn.className = 'icon-palette-btn w-10 h-10 rounded-xl flex items-center justify-center';
+        btn.title = icon.label;
+        btn.dataset.iconId = id;
+
+        const fillAttr = icon.fill ? 'currentColor' : 'none';
+        const strokeAttr = icon.fill ? 'none' : 'currentColor';
+        btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="${fillAttr}" stroke="${strokeAttr}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon.path}"/></svg>`;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedIconId = id;
+          document.querySelectorAll('.icon-palette-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('icon-palette').classList.add('hidden');
+          showStatus(icon.label + ' selected');
+        });
+
+        grid.appendChild(btn);
+      }
+    })();
 
     // --- PDF export ---
 
@@ -4838,6 +5722,7 @@
       toolbarDragStart = null;
     });
 
+    // ---- INIT ----
     window.addEventListener('resize', resize);
     updateUndoRedoButtons();
     resize();
@@ -4863,7 +5748,10 @@
       } catch (_) { return null; }
     }
     const currentUserClaims = decodeJwtPayload(token);
-    const currentUserId = currentUserClaims ? currentUserClaims.id : null;
+    // Note: distinct from the comment-thread `currentUserId` above (that one is
+    // normalized to a string for its String(t.user_id) comparison; this raw id
+    // matches the unconverted numeric listing.seller_id from the API).
+    const marketplaceUserId = currentUserClaims ? currentUserClaims.id : null;
 
     // In-memory cache of image_data URLs for listings the user has purchased
     // this session (avoids re-fetching on re-render).
@@ -4981,7 +5869,7 @@
       body.appendChild(sellerEl);
       body.appendChild(priceEl);
 
-      const isSeller = listing.seller_id === currentUserId;
+      const isSeller = listing.seller_id === marketplaceUserId;
       const hasPurchased = listing.purchased || purchasedImages.has(listing.id);
 
       if (isSeller) {
