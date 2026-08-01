@@ -1191,6 +1191,17 @@
       return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
     }
 
+    function hslToHex(h, s, l) {
+      s /= 100; l /= 100;
+      const a = s * Math.min(l, 1 - l);
+      function f(n) {
+        const k = (n + h / 30) % 12;
+        const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+        return Math.round(255 * color).toString(16).padStart(2, '0');
+      }
+      return '#' + f(0) + f(8) + f(4);
+    }
+
     function updateBrushCursor() {
       if (tool === 'text' || tool === 'shape' || tool === 'comment') {
         brushCursor.style.display = 'none';
@@ -1513,10 +1524,23 @@
       if (s.eraser) {
         ctx.globalCompositeOperation = 'destination-out';
       } else {
+        ctx.beginPath();
+        ctx.moveTo(s.points[0].x, s.points[0].y);
+        for (let i = 1; i < s.points.length; i++) {
+          ctx.lineTo(s.points[i].x, s.points[i].y);
+        }
+        ctx.strokeStyle = s.eraser ? '#ffffff' : s.color;
+        ctx.lineWidth = s.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (s.eraser) {
+          ctx.globalCompositeOperation = 'destination-out';
+        } else {
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
       }
-      ctx.stroke();
-      ctx.globalCompositeOperation = 'source-over';
     }
 
     function screenToWorld(sx, sy) {
@@ -4532,6 +4556,16 @@
       return null;
     }
 
+    async function placeImage(src, x, y, width, height) {
+      const strokeData = { type: 'image', src, x, y, width, height };
+      const saved = await saveStroke(strokeData);
+      if (saved) {
+        strokes.push({ id: saved.id, stroke_data: strokeData });
+        redoStack = [];
+        redrawAll();
+      }
+    }
+
     async function loadStrokes() {
       try {
         const res = await fetch('/api/strokes', { headers });
@@ -4863,7 +4897,7 @@
       } catch (_) { return null; }
     }
     const currentUserClaims = decodeJwtPayload(token);
-    const currentUserId = currentUserClaims ? currentUserClaims.id : null;
+    const marketplaceUserId = currentUserClaims ? currentUserClaims.id : null;
 
     // In-memory cache of image_data URLs for listings the user has purchased
     // this session (avoids re-fetching on re-render).
@@ -4981,7 +5015,7 @@
       body.appendChild(sellerEl);
       body.appendChild(priceEl);
 
-      const isSeller = listing.seller_id === currentUserId;
+      const isSeller = listing.seller_id === marketplaceUserId;
       const hasPurchased = listing.purchased || purchasedImages.has(listing.id);
 
       if (isSeller) {
