@@ -425,10 +425,6 @@
     <span>🪙</span><span id="balance-tokens" class="ml-1 text-zinc-700 dark:text-zinc-200">0</span><span class="text-zinc-500 dark:text-zinc-400 ml-1">TKN</span>
   </div>
 
-  <!-- Rain launch button in top-right -->
-  <button id="btn-rain-launch" class="fixed top-3 right-3 w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors z-[45]" title="Launch snowflake & bomb rain">
-    <span>🌨️</span>
-  </button>
 
   <div id="grid-overlay"></div>
   <canvas id="canvas"></canvas>
@@ -4005,8 +4001,6 @@
     function startRain() {
       if (rainActive) return;
       rainActive = true;
-      const btn = document.getElementById('btn-rain-launch');
-      if (btn) btn.querySelector('span').textContent = '⏹';
       const startTime = performance.now();
       let lastSpawn = 0;
       let nextInterval = 300 + Math.random() * 200;
@@ -4036,8 +4030,6 @@
         rainSpawnRafId = null;
       }
       document.querySelectorAll('.rain-particle').forEach(el => el.remove());
-      const btn = document.getElementById('btn-rain-launch');
-      if (btn) btn.querySelector('span').textContent = '🌨️';
     }
 
     function spawnParticle(type) {
@@ -4095,17 +4087,64 @@
       requestAnimationFrame(step);
     }
 
-    // Rain launch button handler
-    function initRainButton() {
-      const btn = document.getElementById('btn-rain-launch');
-      if (!btn) return;
-      btn.addEventListener('click', () => {
-        if (rainActive) {
-          stopRain();
-        } else {
-          startRain();
+    // Inactivity detection for auto-triggered rain
+    const INACTIVITY_MS = 120000;
+    let lastInteraction = Date.now();
+    let inactivityCheckInterval = null;
+    const IS_STAGING = window.location.hostname.includes('staging') || window.location.search.includes('debug=1');
+
+    function checkInactivity() {
+      if (rainActive) return;
+      const elapsed = Date.now() - lastInteraction;
+      if (IS_STAGING) {
+        console.log('[inactivity] check: elapsed=' + Math.round(elapsed/1000) + 's, threshold=' + Math.round(INACTIVITY_MS/1000) + 's');
+      }
+      if (elapsed > INACTIVITY_MS) {
+        if (IS_STAGING) console.log('[inactivity] threshold crossed, triggering rain');
+        startRain();
+      }
+    }
+
+    function resetInactivityTimer(source) {
+      lastInteraction = Date.now();
+      if (IS_STAGING) {
+        console.log('[inactivity] timer reset by: ' + (source || 'unknown'));
+      }
+    }
+
+    function initInactivityDetection() {
+      if (IS_STAGING) console.log('[inactivity] initializing inactivity detection (120s threshold)');
+
+      canvas.addEventListener('pointerdown', () => resetInactivityTimer('pointerdown'));
+      canvas.addEventListener('touchstart', () => resetInactivityTimer('touchstart'));
+      canvas.addEventListener('wheel', () => resetInactivityTimer('wheel'));
+
+      document.addEventListener('click', (e) => {
+        const isToolbar = e.target.closest('.toolbar') || e.target.closest('#emoji-picker') || e.target.closest('.toolbar-menu');
+        const isCanvas = e.target === canvas || canvas.contains(e.target);
+        if (isToolbar || isCanvas) {
+          resetInactivityTimer(isToolbar ? 'toolbar-click' : 'canvas-click');
         }
       });
+
+      document.getElementById('text-input').addEventListener('input', () => resetInactivityTimer('text-input'));
+      document.getElementById('text-input').addEventListener('keydown', () => resetInactivityTimer('text-keydown'));
+
+      const colorInput = document.querySelector('input[type="color"]');
+      if (colorInput) {
+        colorInput.addEventListener('change', () => resetInactivityTimer('color-change'));
+        colorInput.addEventListener('input', () => resetInactivityTimer('color-input'));
+      }
+
+      const rangeInputs = document.querySelectorAll('input[type="range"]');
+      rangeInputs.forEach(input => {
+        input.addEventListener('input', () => resetInactivityTimer('range-input'));
+      });
+
+      if (IS_STAGING) console.log('[inactivity] event listeners attached');
+
+      inactivityCheckInterval = setInterval(checkInactivity, 5000);
+      if (IS_STAGING) console.log('[inactivity] setInterval created, id=' + inactivityCheckInterval);
     }
 
     // --- Text tool helpers ---
@@ -4843,7 +4882,7 @@
     resize();
     setLoading(true);
     initToolbarPosition();
-    initRainButton();
+    initInactivityDetection();
     loadStrokes();
     loadThreads();
     loadBalance();
