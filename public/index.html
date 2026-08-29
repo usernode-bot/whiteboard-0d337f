@@ -2918,18 +2918,6 @@
     document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('gesturechange', (e) => e.preventDefault());
 
-    // --- Toolbar scroll arrow handlers ---
-
-    (function() {
-      const scrollEl = document.getElementById('toolbar-scroll');
-      document.getElementById('toolbar-scroll-left').addEventListener('click', () => {
-        scrollEl.scrollBy({ left: -200, behavior: 'smooth' });
-      });
-      document.getElementById('toolbar-scroll-right').addEventListener('click', () => {
-        scrollEl.scrollBy({ left: 200, behavior: 'smooth' });
-      });
-    })();
-
     // --- Tool button handlers ---
 
     document.getElementById('btn-pen').addEventListener('click', () => setActiveTool('pen'));
@@ -4851,19 +4839,9 @@
 
     // --- Marketplace ---
 
-    // Decode the JWT payload (base64url, not secret) to get the current user id
-    // so we can identify which listings belong to the viewer.
-    function decodeJwtPayload(tok) {
-      try {
-        const parts = tok.split('.');
-        if (parts.length < 2) return null;
-        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
-        return JSON.parse(atob(padded));
-      } catch (_) { return null; }
-    }
-    const currentUserClaims = decodeJwtPayload(token);
-    const currentUserId = currentUserClaims ? currentUserClaims.id : null;
+    // currentUserId (the viewer's id, decoded from the JWT) is already
+    // declared above in the comment-threads section — reused here to
+    // identify which listings belong to the viewer.
 
     // In-memory cache of image_data URLs for listings the user has purchased
     // this session (avoids re-fetching on re-render).
