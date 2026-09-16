@@ -2921,7 +2921,11 @@
     // --- Toolbar scroll arrow handlers ---
 
     (function() {
+      // The toolbar became a toggle menu; the scrolling strip and its arrows
+      // are gone. Without this guard the lookup below threw at load and
+      // stopped every handler after it from attaching.
       const scrollEl = document.getElementById('toolbar-scroll');
+      if (!scrollEl) return;
       document.getElementById('toolbar-scroll-left').addEventListener('click', () => {
         scrollEl.scrollBy({ left: -200, behavior: 'smooth' });
       });
