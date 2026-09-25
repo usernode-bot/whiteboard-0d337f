@@ -82,7 +82,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Usernode bridge — centrally hosted, never vendored. Powers on-chain
        sendTransaction for the premium-brush unlock. -->
-  <script src="https://social-vibecoding.usernodelabs.org/usernode-bridge/v1/bridge.js"></script>
+  <script src="/usernode-bridge/v1/bridge.js"></script>
   <style>
     /* ============================================================
        Design tokens — single source of truth.
@@ -3678,7 +3678,11 @@
     // --- Toolbar scroll arrow handlers ---
 
     (function() {
+      // The toolbar became a toggle menu; the scrolling strip and its arrows
+      // are gone. Without this guard the lookup below threw at load and
+      // stopped every handler after it from attaching.
       const scrollEl = document.getElementById('toolbar-scroll');
+      if (!scrollEl) return;
       document.getElementById('toolbar-scroll-left').addEventListener('click', () => {
         scrollEl.scrollBy({ left: -200, behavior: 'smooth' });
       });
