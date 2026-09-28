@@ -1,4 +1,5 @@
 {
+  "icon": { "image": "brand/icon.png" },
   "secrets": [
     {
       "key": "PREMIUM_BRUSH_PAYEE_PUBKEY",
